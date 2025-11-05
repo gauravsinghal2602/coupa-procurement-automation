@@ -43,6 +43,9 @@
   const formTitle = el("formTitle");
   const saveBtn = el("saveBtn");
   const cancelEditBtn = el("cancelEditBtn");
+  const csvRow = document.getElementById("csvRow");
+  const csvInput = document.getElementById("csvInput");
+  const uploadCsvBtn = document.getElementById("uploadCsvBtn");
   const formSection = document.getElementById("formSection");
   const tableSection = document.getElementById("tableSection");
   const pkHeader = el("pkHeader");
@@ -111,6 +114,22 @@
     const body = buildBody(pk, sk, attributes);
     const res = await fetch(url, { ...cfg.requestInit, method: "POST", body });
     if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+    return res.json().catch(() => ({}));
+  }
+
+  async function apiBulkCreateCsv(file) {
+    const url = buildUrl(cfg.endpoints.bulkCreateCsv);
+    // Clone headers without Content-Type, we will set text/csv
+    const headers = { ...(cfg.requestInit.headers || {}) };
+    delete headers["Content-Type"];
+    const res = await fetch(url, {
+      method: "POST",
+      mode: cfg.requestInit.mode || "cors",
+      credentials: cfg.requestInit.credentials || "omit",
+      headers: { ...headers, "Content-Type": "text/csv" },
+      body: file,
+    });
+    if (!res.ok) throw new Error(`Bulk upload failed: ${res.status}`);
     return res.json().catch(() => ({}));
   }
 
@@ -435,6 +454,7 @@
     formTitle.textContent = "Create Item";
     saveBtn.textContent = "Create";
     attributesRow.classList.remove("hidden");
+    csvRow.classList.remove("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -446,6 +466,7 @@
     formTitle.textContent = "Update Item (enter exactly one attribute)";
     saveBtn.textContent = "Update";
     attributesRow.classList.remove("hidden");
+    csvRow.classList.add("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -457,9 +478,29 @@
     formTitle.textContent = "Delete Item";
     saveBtn.textContent = "Delete";
     attributesRow.classList.add("hidden");
+    csvRow.classList.add("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
+  });
+
+  uploadCsvBtn.addEventListener("click", async () => {
+    if (!csvInput.files || csvInput.files.length === 0) { setStatus("Please choose a CSV file", true); return; }
+    const file = csvInput.files[0];
+    setStatus("Uploading CSV...");
+    uploadCsvBtn.disabled = true;
+    try {
+      await apiBulkCreateCsv(file);
+      setStatus("CSV uploaded.");
+      csvInput.value = "";
+      showSection("table");
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      setStatus(e.message || "Bulk upload failed", true);
+    } finally {
+      uploadCsvBtn.disabled = false;
+    }
   });
 
   // Filter handlers

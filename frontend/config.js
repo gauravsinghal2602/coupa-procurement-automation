@@ -6,6 +6,7 @@ window.APP_CONFIG = {
       list: "/suppliers",
       getOne: "/supplier", // GET with query params
       create: "/supplier",
+      bulkCreateCsv: "/suppliers", // POST text/csv
       // PATCH /supplier with keys in body and updateKey/updateValue
       update: "/supplier",
       // DELETE /supplier with keys in body
