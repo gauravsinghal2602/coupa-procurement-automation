@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coupa Procurement - DynamoDB Admin</title>
+    <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+    <div class="container">
+        <header class="topbar">
+            <h1>DynamoDB Supplier Admin</h1>
+            <div class="actions">
+                <button id="viewAllBtn" class="secondary" title="View all suppliers">View All</button>
+                <button id="createBtn" title="Create item">Create</button>
+                <button id="updateBtn" class="secondary" title="Update item">Update</button>
+                <button id="deleteBtn" class="danger" title="Delete item">Delete</button>
+            </div>
+        </header>
+
+        <section class="config-hint">
+            <p>
+                Configure your API endpoints in <code>frontend/config.js</code> or rename
+                <code>config.example.js</code> to <code>config.js</code>.
+            </p>
+        </section>
+
+        <section>
+            <span id="status" class="status"></span>
+        </section>
+
+        <section class="form-section hidden" id="formSection">
+            <h2 id="formTitle">Create Item</h2>
+            <form id="itemForm">
+                <div class="form-row">
+                    <label for="pkInput" id="pkLabel">Partition Key</label>
+                    <input id="pkInput" name="pk" type="text" placeholder="SAP vendor code" required />
+                </div>
+                <div class="form-row" id="skRow">
+                    <label for="skInput" id="skLabel">Sort Key</label>
+                    <input id="skInput" name="sk" type="text" placeholder="Plant Code" />
+                </div>
+                <div class="form-row" id="attributesRow">
+                    <label for="attributesInput">Attributes (JSON)</label>
+                    <textarea id="attributesInput" name="attributes" rows="6" placeholder='{"name":"Item name","price":10}'></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="saveBtn">Create</button>
+                    <button type="button" id="cancelEditBtn" class="secondary hidden">Cancel Edit</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="table-section hidden" id="tableSection">
+            <h2>Items</h2>
+            <table id="itemsTable" class="table">
+                <thead id="itemsThead">
+                    <tr>
+                        <th id="pkHeader">Partition Key</th>
+                        <th id="skHeader">Sort Key</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="itemsTbody">
+                    <tr>
+                        <td colspan="3" class="muted">No data loaded yet.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+</body>
+</html>
+
+
