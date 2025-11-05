@@ -99,6 +99,35 @@ input, textarea {
   margin-bottom: 10px;
 }
 .table-controls .spacer { flex: 1; }
+
+/* Multi-condition filter UI */
+.conditions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.condition-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+.condition-row select, .condition-row input {
+  padding: 8px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.condition-row button {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
 .table-controls select, .table-controls input {
   padding: 8px 10px;
   background: var(--panel);

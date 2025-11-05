@@ -29,8 +29,8 @@
   const deleteBtn = el("deleteBtn");
   const itemsTbody = el("itemsTbody");
   const itemsThead = el("itemsThead");
-  const filterField = el("filterField");
-  const filterText = el("filterText");
+  const conditionsEl = el("conditions");
+  const addConditionBtn = el("addConditionBtn");
   const applyFilterBtn = el("applyFilterBtn");
   const clearFilterBtn = el("clearFilterBtn");
   const downloadAllBtn = el("downloadAllBtn");
@@ -142,13 +142,20 @@
   function buildPatchBody(pk, sk, attributes) {
     const payload = { [cfg.partitionKeyName]: pk };
     if (cfg.sortKeyName && sk != null) payload[cfg.sortKeyName] = sk;
-    const keys = attributes ? Object.keys(attributes) : [];
-    if (keys.length !== 1) {
-      throw new Error("For PATCH, provide exactly one attribute to update.");
+    const attrs = attributes || {};
+    const hasExplicit = Object.prototype.hasOwnProperty.call(attrs, "updateKey") && Object.prototype.hasOwnProperty.call(attrs, "updateValue");
+    if (hasExplicit) {
+      payload.updateKey = attrs.updateKey;
+      payload.updateValue = attrs.updateValue;
+    } else {
+      const entries = Object.entries(attrs).filter(([k]) => k !== cfg.partitionKeyName && k !== cfg.sortKeyName);
+      if (entries.length === 0) {
+        throw new Error("For PATCH, provide updateKey/updateValue or a single field to update.");
+      }
+      const [onlyKey, onlyVal] = entries[0];
+      payload.updateKey = onlyKey;
+      payload.updateValue = onlyVal;
     }
-    const onlyKey = keys[0];
-    payload.updateKey = onlyKey;
-    payload.updateValue = attributes[onlyKey];
     return JSON.stringify(payload);
   }
 
@@ -186,13 +193,9 @@
     const thActions = document.createElement("th"); thActions.textContent = "Actions"; headerRow.appendChild(thActions);
     itemsThead.innerHTML = "";
     itemsThead.appendChild(headerRow);
-    // Populate filter field options
-    filterField.innerHTML = "";
-    const optAll = document.createElement("option"); optAll.value = "__ALL__"; optAll.textContent = "All fields"; filterField.appendChild(optAll);
-    const addOpt = (name) => { const o = document.createElement("option"); o.value = name; o.textContent = name; filterField.appendChild(o); };
-    addOpt(pkName);
-    if (skName) addOpt(skName);
-    for (const k of otherKeys) addOpt(k);
+    // Populate filter field options for each condition row
+    const selects = conditionsEl.querySelectorAll('select.condition-field');
+    selects.forEach((sel) => populateFieldOptions(sel, pkName, skName, otherKeys));
 
     // Render body
     if (!Array.isArray(items) || items.length === 0) {
@@ -265,22 +268,64 @@
   }
 
   function applyFilter() {
-    const q = (filterText.value || "").toLowerCase();
-    const field = filterField.value;
-    if (!q) { renderItems(allItems); return; }
+    const conds = getConditions();
+    if (conds.length === 0) { renderItems(allItems); return; }
     const filtered = allItems.filter((row) => {
-      if (field && field !== "__ALL__") {
-        const v = valueToString(row[field] ?? "").toLowerCase();
-        return v.includes(q);
+      // AND across all conditions
+      for (const c of conds) {
+        const q = (c.text || "").toLowerCase();
+        if (!q) return false; // empty text doesn't match
+        if (c.field && c.field !== "__ALL__") {
+          const v = valueToString(row[c.field] ?? "").toLowerCase();
+          if (!v.includes(q)) return false;
+        } else {
+          // All fields: any field must match this condition
+          let any = false;
+          for (const k of Object.keys(row)) {
+            const v = valueToString(row[k] ?? "").toLowerCase();
+            if (v.includes(q)) { any = true; break; }
+          }
+          if (!any) return false;
+        }
       }
-      // All fields: check all values
-      for (const k of Object.keys(row)) {
-        const v = valueToString(row[k] ?? "").toLowerCase();
-        if (v.includes(q)) return true;
-      }
-      return false;
+      return true;
     });
     renderItems(filtered);
+  }
+
+  function getConditions() {
+    const rows = Array.from(conditionsEl.querySelectorAll('.condition-row'));
+    return rows.map((r) => ({
+      field: r.querySelector('select.condition-field')?.value,
+      text: r.querySelector('input.condition-text')?.value,
+    })).filter(Boolean);
+  }
+
+  function populateFieldOptions(selectEl, pkName, skName, otherKeys) {
+    const prev = selectEl.value;
+    selectEl.innerHTML = "";
+    const optAll = document.createElement("option"); optAll.value = "__ALL__"; optAll.textContent = "All fields"; selectEl.appendChild(optAll);
+    const addOpt = (name) => { const o = document.createElement("option"); o.value = name; o.textContent = name; selectEl.appendChild(o); };
+    addOpt(pkName);
+    if (skName) addOpt(skName);
+    for (const k of otherKeys) addOpt(k);
+    // restore previous if exists
+    if (prev) selectEl.value = prev;
+  }
+
+  function addConditionRow() {
+    const row = document.createElement('div');
+    row.className = 'condition-row';
+    const sel = document.createElement('select'); sel.className = 'condition-field';
+    const inp = document.createElement('input'); inp.className = 'condition-text'; inp.placeholder = 'contains...';
+    const del = document.createElement('button'); del.type = 'button'; del.textContent = 'Remove';
+    del.addEventListener('click', () => { row.remove(); });
+    row.appendChild(sel); row.appendChild(inp); row.appendChild(del);
+    conditionsEl.appendChild(row);
+    // options will be populated on next renderItems call; also try immediate populate if columns known
+    if (columnOrder && columnOrder.length > 0) {
+      const pkName = cfg.partitionKeyName; const skName = cfg.sortKeyName; populateFieldOptions(sel, pkName, skName, columnOrder);
+    }
   }
 
   function toCsvValue(value) {
@@ -331,7 +376,14 @@
       skInput.value = sk != null ? String(sk) : "";
       skInput.disabled = true;
     }
-    attributesInput.value = JSON.stringify(attributes || {}, null, 2);
+    // Prefill only the first attribute (single field) to align with PATCH semantics
+    const entries = Object.entries(attributes || {});
+    if (entries.length > 0) {
+      const [firstKey, firstVal] = entries[0];
+      attributesInput.value = JSON.stringify({ [firstKey]: firstVal }, null, 2);
+    } else {
+      attributesInput.value = "{}";
+    }
   }
 
   function cancelEdit() {
@@ -378,41 +430,45 @@
   });
 
   createBtn.addEventListener("click", () => {
+    cancelEdit();
     currentMode = "create";
     formTitle.textContent = "Create Item";
     saveBtn.textContent = "Create";
     attributesRow.classList.remove("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
-    cancelEdit();
     showSection("form");
   });
 
   updateBtn.addEventListener("click", () => {
+    cancelEdit();
     currentMode = "update";
     formTitle.textContent = "Update Item (enter exactly one attribute)";
     saveBtn.textContent = "Update";
     attributesRow.classList.remove("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
-    cancelEdit();
     showSection("form");
   });
 
   deleteBtn.addEventListener("click", () => {
+    cancelEdit();
     currentMode = "delete";
     formTitle.textContent = "Delete Item";
     saveBtn.textContent = "Delete";
     attributesRow.classList.add("hidden");
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
-    cancelEdit();
     showSection("form");
   });
 
   // Filter handlers
   applyFilterBtn.addEventListener("click", applyFilter);
-  clearFilterBtn.addEventListener("click", () => { filterText.value = ""; filterField.value = "__ALL__"; renderItems(allItems); });
+  clearFilterBtn.addEventListener("click", () => { conditionsEl.innerHTML = ""; addConditionRow(); renderItems(allItems); });
+  addConditionBtn.addEventListener("click", addConditionRow);
+
+  // Start with one empty condition row
+  addConditionRow();
 
   itemForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
