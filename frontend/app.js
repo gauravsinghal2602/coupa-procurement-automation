@@ -29,6 +29,12 @@
   const deleteBtn = el("deleteBtn");
   const itemsTbody = el("itemsTbody");
   const itemsThead = el("itemsThead");
+  const filterField = el("filterField");
+  const filterText = el("filterText");
+  const applyFilterBtn = el("applyFilterBtn");
+  const clearFilterBtn = el("clearFilterBtn");
+  const downloadAllBtn = el("downloadAllBtn");
+  const downloadFilteredBtn = el("downloadFilteredBtn");
   const itemForm = el("itemForm");
   const pkInput = el("pkInput");
   const skInput = el("skInput");
@@ -62,6 +68,9 @@
   tableSection.classList.add("hidden");
 
   let editState = { isEditing: false, pk: null, sk: null };
+  let allItems = [];
+  let columnOrder = [];
+  let lastRendered = [];
 
   function mergeConfig(base, override) {
     const out = { ...base, ...override };
@@ -153,17 +162,21 @@
     // Build dynamic columns: pk, sk (if any), plus union of other keys
     const pkName = cfg.partitionKeyName;
     const skName = cfg.sortKeyName;
-    const otherKeysSet = new Set();
-    if (Array.isArray(items)) {
-      for (const it of items) {
-        if (!it || typeof it !== "object") continue;
-        for (const k of Object.keys(it)) {
-          if (k === pkName || (skName && k === skName)) continue;
-          otherKeysSet.add(k);
+    let otherKeys = columnOrder;
+    if (!otherKeys || otherKeys.length === 0) {
+      const otherKeysSet = new Set();
+      if (Array.isArray(items)) {
+        for (const it of items) {
+          if (!it || typeof it !== "object") continue;
+          for (const k of Object.keys(it)) {
+            if (k === pkName || (skName && k === skName)) continue;
+            otherKeysSet.add(k);
+          }
         }
       }
+      otherKeys = Array.from(otherKeysSet);
+      columnOrder = otherKeys.slice();
     }
-    const otherKeys = Array.from(otherKeysSet);
 
     // Render header
     const headerRow = document.createElement("tr");
@@ -173,6 +186,13 @@
     const thActions = document.createElement("th"); thActions.textContent = "Actions"; headerRow.appendChild(thActions);
     itemsThead.innerHTML = "";
     itemsThead.appendChild(headerRow);
+    // Populate filter field options
+    filterField.innerHTML = "";
+    const optAll = document.createElement("option"); optAll.value = "__ALL__"; optAll.textContent = "All fields"; filterField.appendChild(optAll);
+    const addOpt = (name) => { const o = document.createElement("option"); o.value = name; o.textContent = name; filterField.appendChild(o); };
+    addOpt(pkName);
+    if (skName) addOpt(skName);
+    for (const k of otherKeys) addOpt(k);
 
     // Render body
     if (!Array.isArray(items) || items.length === 0) {
@@ -219,6 +239,7 @@
 
       itemsTbody.appendChild(tr);
     }
+    lastRendered = Array.isArray(items) ? items.slice() : [];
   }
 
   function valueToString(val) {
@@ -234,13 +255,69 @@
       const items = Array.isArray(data)
         ? data
         : (data.items || data.Items || data.suppliers || data.Suppliers || []);
-      renderItems(items);
+      allItems = items;
+      renderItems(allItems);
       setStatus("Loaded.");
     } catch (e) {
       console.error(e);
       setStatus(e.message || "Failed to load", true);
     }
   }
+
+  function applyFilter() {
+    const q = (filterText.value || "").toLowerCase();
+    const field = filterField.value;
+    if (!q) { renderItems(allItems); return; }
+    const filtered = allItems.filter((row) => {
+      if (field && field !== "__ALL__") {
+        const v = valueToString(row[field] ?? "").toLowerCase();
+        return v.includes(q);
+      }
+      // All fields: check all values
+      for (const k of Object.keys(row)) {
+        const v = valueToString(row[k] ?? "").toLowerCase();
+        if (v.includes(q)) return true;
+      }
+      return false;
+    });
+    renderItems(filtered);
+  }
+
+  function toCsvValue(value) {
+    const s = value == null ? "" : (typeof value === "object" ? JSON.stringify(value) : String(value));
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function downloadCsv(rows) {
+    const pkName = cfg.partitionKeyName;
+    const skName = cfg.sortKeyName;
+    const cols = [pkName].concat(skName ? [skName] : []).concat(columnOrder);
+    const header = cols.map(toCsvValue).join(",");
+    const lines = [header];
+    for (const r of rows) {
+      const line = cols.map((c) => toCsvValue(r[c])).join(",");
+      lines.push(line);
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `suppliers_${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  downloadAllBtn.addEventListener("click", () => {
+    if (!allItems || allItems.length === 0) { setStatus("No data to export", true); return; }
+    downloadCsv(allItems);
+  });
+  downloadFilteredBtn.addEventListener("click", () => {
+    if (!lastRendered || lastRendered.length === 0) { setStatus("No filtered data to export", true); return; }
+    downloadCsv(lastRendered);
+  });
 
   function startEdit(pk, sk, attributes) {
     editState = { isEditing: true, pk, sk };
@@ -332,6 +409,10 @@
     cancelEdit();
     showSection("form");
   });
+
+  // Filter handlers
+  applyFilterBtn.addEventListener("click", applyFilter);
+  clearFilterBtn.addEventListener("click", () => { filterText.value = ""; filterField.value = "__ALL__"; renderItems(allItems); });
 
   itemForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
