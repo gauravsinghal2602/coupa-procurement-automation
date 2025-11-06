@@ -58,6 +58,10 @@ def lambda_handler(event, context):
     elif httpMethod == getMethod and path == suppliersPath:
         # LIST ALL: GET /suppliers
         response = getSuppliers()
+    
+        # CREATE
+    elif httpMethod == postMethod and path == supplierPath:
+        response = saveSupplier(json.loads(event.get('body', '{}')))
         
     elif httpMethod == postMethod and path == suppliersPath:
         # POST /suppliers: Routes based on payload type (File vs. JSON)

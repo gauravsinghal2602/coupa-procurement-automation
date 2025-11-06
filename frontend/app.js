@@ -246,12 +246,14 @@
       const tdActions = document.createElement("td");
       tdActions.className = "row-actions";
       const editBtn = document.createElement("button");
+      editBtn.type = "button";
       editBtn.className = "secondary";
       editBtn.textContent = "Edit";
       // Pass a minimal attributes object for convenience when opening edit from a row
       const attrsForEdit = Object.fromEntries(Object.entries(item).filter(([k]) => k !== pkName && k !== skName));
       editBtn.addEventListener("click", () => startEdit(pk, sk, attrsForEdit));
       const delBtn = document.createElement("button");
+      delBtn.type = "button";
       delBtn.className = "danger";
       delBtn.textContent = "Delete";
       delBtn.addEventListener("click", () => onDelete(pk, sk));
@@ -385,10 +387,14 @@
 
   function startEdit(pk, sk, attributes) {
     editState = { isEditing: true, pk, sk };
+    // Switch UI into update form mode
+    currentMode = "update";
     const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${pk}, ${cfg.sortKeyName}=${sk}` : `${cfg.partitionKeyName}=${pk}`;
     formTitle.textContent = `Edit Item (${keyDesc})`;
     saveBtn.textContent = "Update";
     cancelEditBtn.classList.remove("hidden");
+    if (typeof attributesRow !== "undefined" && attributesRow) attributesRow.classList.remove("hidden");
+    if (typeof csvRow !== "undefined" && csvRow) csvRow.classList.add("hidden");
     pkInput.value = pk;
     pkInput.disabled = true;
     if (cfg.sortKeyName && skInput) {
@@ -403,6 +409,7 @@
     } else {
       attributesInput.value = "{}";
     }
+    showSection("form");
   }
 
   function cancelEdit() {
