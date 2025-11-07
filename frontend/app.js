@@ -648,12 +648,12 @@
   }
 
   // Call initializeToken at the start of the application
-  initializeToken().then(() => {
-    // After token is initialized, refresh the list if needed
-    if (currentMode === "list") {
-      refresh();
-    }
-  });
+  // initializeToken().then(() => {
+  //   // After token is initialized, refresh the list if needed
+  //   // if (currentMode === "list") {
+  //   //   refresh();
+  //   // }
+  // });
 
   // Initial: wait for a button click; no auto-load
 })();
