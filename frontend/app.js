@@ -630,6 +630,31 @@
 
   cancelEditBtn.addEventListener("click", cancelEdit);
 
+  // Function to generate token and update config
+  async function initializeToken() {
+    try {
+      const tokenUrl = buildUrl(cfg.endpoints.generateToken);
+      const tokenRes = await fetch(tokenUrl, { method: "POST" });
+      if (!tokenRes.ok) {
+        throw new Error(`Failed to generate token: ${tokenRes.status}`);
+      }
+      const { token } = await tokenRes.json();
+      cfg.requestInit.headers = { ...cfg.requestInit.headers, Authorization: `Bearer ${token}` };
+      console.log("Token generated and applied.");
+    } catch (e) {
+      console.error("Token initialization failed:", e);
+      setStatus(e.message || "Failed to initialize token", true);
+    }
+  }
+
+  // Call initializeToken at the start of the application
+  initializeToken().then(() => {
+    // After token is initialized, refresh the list if needed
+    if (currentMode === "list") {
+      refresh();
+    }
+  });
+
   // Initial: wait for a button click; no auto-load
 })();
 
