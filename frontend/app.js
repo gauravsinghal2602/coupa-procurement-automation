@@ -298,13 +298,13 @@
         if (!q) return false; // empty text doesn't match
         if (c.field && c.field !== "__ALL__") {
           const v = valueToString(row[c.field] ?? "").toLowerCase();
-          if (!v.includes(q)) return false;
+          if (v !== q) return false;
         } else {
           // All fields: any field must match this condition
           let any = false;
           for (const k of Object.keys(row)) {
             const v = valueToString(row[k] ?? "").toLowerCase();
-            if (v.includes(q)) { any = true; break; }
+            if (v === q) { any = true; break; }
           }
           if (!any) return false;
         }
@@ -338,7 +338,7 @@
     const row = document.createElement('div');
     row.className = 'condition-row';
     const sel = document.createElement('select'); sel.className = 'condition-field';
-    const inp = document.createElement('input'); inp.className = 'condition-text'; inp.placeholder = 'contains...';
+    const inp = document.createElement('input'); inp.className = 'condition-text'; inp.placeholder = 'Search here...';
     const del = document.createElement('button'); del.type = 'button'; del.textContent = 'Remove';
     del.addEventListener('click', () => { row.remove(); });
     row.appendChild(sel); row.appendChild(inp); row.appendChild(del);
