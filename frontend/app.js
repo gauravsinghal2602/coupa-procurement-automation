@@ -349,41 +349,111 @@
     }
   }
 
-  function toCsvValue(value) {
-    const s = value == null ? "" : (typeof value === "object" ? JSON.stringify(value) : String(value));
-    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  }
-
-  function downloadCsv(rows) {
-    const pkName = cfg.partitionKeyName;
-    const skName = cfg.sortKeyName;
-    const cols = [pkName].concat(skName ? [skName] : []).concat(columnOrder);
-    const header = cols.map(toCsvValue).join(",");
-    const lines = [header];
-    for (const r of rows) {
-      const line = cols.map((c) => toCsvValue(r[c])).join(",");
-      lines.push(line);
+  async function downloadCsvFromApi(url, filename) {
+    try {
+      // For GET requests, we only need Accept header, not Content-Type
+      const headers = {};
+      // Copy other headers (like API keys) but exclude Content-Type
+      if (cfg.requestInit.headers) {
+        for (const [key, value] of Object.entries(cfg.requestInit.headers)) {
+          if (key.toLowerCase() !== "content-type") {
+            headers[key] = value;
+          }
+        }
+      }
+      headers["Accept"] = "text/csv";
+      console.log("Fetching CSV from:", url);
+      console.log("Headers:", headers);
+      const res = await fetch(url, {
+        method: "GET",
+        mode: cfg.requestInit.mode || "cors",
+        credentials: cfg.requestInit.credentials || "omit",
+        headers,
+      });
+      console.log("Response status:", res.status, res.statusText);
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        throw new Error(`Download failed: ${res.status} ${res.statusText} - ${errorText}`);
+      }
+      const blob = await res.blob();
+      console.log("Blob received, size:", blob.size);
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+      return true;
+    } catch (e) {
+      console.error("downloadCsvFromApi error:", e);
+      throw e;
     }
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `suppliers_${Date.now()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
-  downloadAllBtn.addEventListener("click", () => {
-    if (!allItems || allItems.length === 0) { setStatus("No data to export", true); return; }
-    downloadCsv(allItems);
-  });
-  downloadFilteredBtn.addEventListener("click", () => {
-    if (!lastRendered || lastRendered.length === 0) { setStatus("No filtered data to export", true); return; }
-    downloadCsv(lastRendered);
-  });
+  // Setup download button handlers
+  if (downloadAllBtn) {
+    console.log("Setting up downloadAllBtn event listener");
+    downloadAllBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("Download All button clicked!");
+      setStatus("Downloading all records...");
+      downloadAllBtn.disabled = true;
+      try {
+        const url = buildUrl(cfg.endpoints.downloadAll);
+        console.log("Download All URL:", url);
+        await downloadCsvFromApi(url, `suppliers_all_${Date.now()}.csv`);
+        setStatus("Download started.");
+      } catch (e) {
+        console.error("Download All error:", e);
+        setStatus(e.message || "Download failed", true);
+      } finally {
+        downloadAllBtn.disabled = false;
+      }
+    });
+    console.log("downloadAllBtn event listener attached");
+  } else {
+    console.error("downloadAllBtn not found - button may not exist in DOM");
+  }
+
+  if (downloadFilteredBtn) {
+    console.log("Setting up downloadFilteredBtn event listener");
+    downloadFilteredBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("Download Filtered button clicked!");
+      const conds = getConditions();
+      if (conds.length === 0) {
+        setStatus("No filters applied. Use 'Download All' for all records.", true);
+        return;
+      }
+      setStatus("Downloading filtered records...");
+      downloadFilteredBtn.disabled = true;
+      try {
+        const qp = new URLSearchParams();
+        // Build query params from filter conditions
+        for (const c of conds) {
+          if (c.field && c.field !== "__ALL__" && c.text) {
+            qp.append(c.field, c.text);
+          }
+        }
+        const url = buildUrl(cfg.endpoints.downloadFiltered) + (qp.toString() ? "?" + qp.toString() : "");
+        console.log("Download Filtered URL:", url);
+        await downloadCsvFromApi(url, `suppliers_filtered_${Date.now()}.csv`);
+        setStatus("Download started.");
+      } catch (e) {
+        console.error("Download Filtered error:", e);
+        setStatus(e.message || "Download failed", true);
+      } finally {
+        downloadFilteredBtn.disabled = false;
+      }
+    });
+    console.log("downloadFilteredBtn event listener attached");
+  } else {
+    console.error("downloadFilteredBtn not found - button may not exist in DOM");
+  }
 
   function startEdit(pk, sk, attributes) {
     editState = { isEditing: true, pk, sk };

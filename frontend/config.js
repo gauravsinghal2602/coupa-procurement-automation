@@ -11,6 +11,8 @@ window.APP_CONFIG = {
       update: "/supplier",
       // DELETE /supplier with keys in body
       delete: "/supplier",
+      downloadAll: "/suppliers/download/all",
+      downloadFiltered: "/suppliers/download/filtered",
     },
     requestInit: {
       headers: {
