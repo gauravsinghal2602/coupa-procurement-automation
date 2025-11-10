@@ -144,15 +144,20 @@
 
   function getAttributesFromForm(forUpdate) {
     if (!hasSchema()) return safeParseJson(attributesInput.value);
-    // Update mode with dropdown + single input
-    const selEl = document.getElementById("attr_select");
-    const valEl = document.getElementById("attr_value");
-    if (forUpdate && selEl && valEl) {
-      const name = selEl.value;
-      const f = getFilteredSchema().find(x => x.name === name) || {};
-      const v = coerceValueByType(valEl.value, f.type);
+    // New update rows UI present?
+    const list = document.getElementById("updateRows");
+    if (forUpdate && list) {
       const out = {};
-      if (v !== undefined && v !== "") out[name] = v;
+      const rows = Array.from(list.querySelectorAll('.update-row'));
+      for (const row of rows) {
+        const sel = row.querySelector('select.update-field');
+        const valEl = row.querySelector('input.update-value');
+        if (!sel || !valEl) continue;
+        const f = getFilteredSchema().find(x => x.name === sel.value) || {};
+        const v = coerceValueByType(valEl.value, f.type);
+        if (v !== undefined && v !== "") out[sel.value] = v;
+      }
+      if (Object.keys(out).length < 1) throw new Error("For update, add at least one field and value.");
       return out;
     }
     // Create mode: collect all fields
@@ -165,7 +170,6 @@
       if (v !== undefined && v !== "") { out[field.name] = v; countFilled++; }
     }
     if (forUpdate) {
-      // In multi-field update mode, allow 1..N fields; require at least one
       if (countFilled < 1) throw new Error("For update, fill at least one attribute field.");
     }
     return out;
@@ -601,8 +605,7 @@
     const entries = Object.entries(attributes || {});
     if (entries.length > 0) {
       if (hasSchema()) {
-        renderAttributeFields();
-        setAttributesToForm(Object.fromEntries([entries[0]]), true);
+        renderUpdateMultiFieldUI(Object.fromEntries([entries[0]]));
         attributesFields.classList.remove("hidden");
         attributesInput.classList.add("hidden");
       } else {
@@ -610,7 +613,7 @@
         attributesInput.value = JSON.stringify({ [firstKey]: firstVal }, null, 2);
       }
     } else {
-      if (hasSchema()) renderAttributeFields(); else attributesInput.value = "{}";
+      if (hasSchema()) renderUpdateMultiFieldUI(); else attributesInput.value = "{}";
     }
     showSection("form");
   }
@@ -674,11 +677,11 @@
   updateBtn.addEventListener("click", () => {
     cancelEdit();
     currentMode = "update";
-    formTitle.textContent = "Update Item (fill one or more fields)";
+    formTitle.textContent = "Update Item (select fields and values)";
     saveBtn.textContent = "Update";
     attributesRow.classList.remove("hidden");
     csvRow.classList.add("hidden");
-    if (hasSchema()) { renderAttributeFields(); }
+    if (hasSchema()) { renderUpdateMultiFieldUI(); }
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -793,6 +796,51 @@
   // });
 
   // Initial: wait for a button click; no auto-load
+
+  // Field-based multi-update UI
+  function createUpdateRow(schema, preset) {
+    const row = document.createElement("div"); row.className = "form-row update-row";
+    const sel = document.createElement("select"); sel.className = "update-field";
+    for (const f of schema) { const opt = document.createElement("option"); opt.value = f.name; opt.textContent = f.label || f.name; sel.appendChild(opt); }
+    const input = document.createElement("input"); input.className = "update-value"; input.type = "text";
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "ghost"; btn.textContent = "Remove";
+    btn.addEventListener("click", () => { row.remove(); });
+
+    function syncType() {
+      const f = schema.find(s => s.name === sel.value);
+      const t = f && f.type; input.type = t === "number" ? "number" : t === "date" ? "date" : t === "email" ? "email" : "text";
+      input.placeholder = f && f.placeholder ? f.placeholder : "";
+    }
+    sel.addEventListener("change", syncType);
+
+    if (preset) { sel.value = preset.name; input.value = preset.value; }
+    syncType();
+
+    row.appendChild(sel); row.appendChild(input); row.appendChild(btn);
+    return row;
+  }
+
+  function renderUpdateMultiFieldUI(prefills) {
+    if (!hasSchema()) { attributesFields.classList.add("hidden"); attributesInput.classList.remove("hidden"); return; }
+    const schema = getFilteredSchema();
+    attributesFields.innerHTML = "";
+    const label = document.createElement("label"); label.textContent = "Select field(s) and provide value"; attributesFields.appendChild(label);
+    const list = document.createElement("div"); list.id = "updateRows"; list.className = "form-row"; attributesFields.appendChild(list);
+    const actions = document.createElement("div"); actions.className = "form-actions"; attributesFields.appendChild(actions);
+    const addBtn = document.createElement("button"); addBtn.type = "button"; addBtn.className = "secondary"; addBtn.textContent = "+ Add another field"; actions.appendChild(addBtn);
+    addBtn.addEventListener("click", () => { list.appendChild(createUpdateRow(schema)); });
+
+    // initial rows
+    if (prefills && typeof prefills === "object" && Object.keys(prefills).length > 0) {
+      const [k, v] = Object.entries(prefills)[0];
+      list.appendChild(createUpdateRow(schema, { name: k, value: v }));
+    } else {
+      list.appendChild(createUpdateRow(schema));
+    }
+
+    attributesFields.classList.remove("hidden");
+    attributesInput.classList.add("hidden");
+  }
 })();
 
 

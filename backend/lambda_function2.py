@@ -410,12 +410,23 @@ def modifySupplier(pk, sk, updates):
         if not isinstance(updates, dict) or len(updates) == 0:
             return buildResponse(400, {'message': 'No attributes provided to update.'})
 
+        # Filter out empty/None values to avoid overwriting with blanks
+        cleaned_updates = {}
+        for k, v in updates.items():
+            if v is None:
+                continue
+            if isinstance(v, str) and v.strip() == "":
+                continue
+            cleaned_updates[k] = v
+        if len(cleaned_updates) == 0:
+            return buildResponse(400, {'message': 'No non-empty values provided to update.'})
+
         set_clauses = []
         expression_attribute_names = {}
         expression_attribute_values = {}
 
         i = 0
-        for attr, value in updates.items():
+        for attr, value in cleaned_updates.items():
             name_ph = f"#U{i}"
             value_ph = f":v{i}"
             set_clauses.append(f"{name_ph} = {value_ph}")
