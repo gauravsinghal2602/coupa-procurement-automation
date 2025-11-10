@@ -22,4 +22,14 @@ window.APP_CONFIG = {
       credentials: "omit",
       mode: "cors",
     },
+    schema: [
+      { name: "Commodity/Category Name", label: "Commodity / Category Name", type: "text", required: true },
+      { name: "Key words", label: "Key words", type: "text" },
+      { name: "Plant Code", label: "Plant Code", type: "text", required: true },
+      { name: "Plant Name", label: "Plant Name", type: "text" },
+      { name: "SAP vendor code", label: "SAP vendor code", type: "text", required: true },
+      { name: "Vendor Name", label: "Vendor Name", type: "text" },
+      { name: "Vendor contact details", label: "Vendor contact details", type: "text" },
+      { name: "Vendor email id", label: "Vendor email id", type: "email" }
+    ],
   };

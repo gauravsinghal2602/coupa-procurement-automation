@@ -4,6 +4,7 @@
     // For composite keys, set both. If only partitionKeyName is set, app will treat as single key.
     partitionKeyName: "id",
     sortKeyName: null, // e.g., "sk"
+    schema: [], // optional: [{ name, label, type, required }]
     endpoints: {
       list: "/items",
       create: "/items",
@@ -20,6 +21,25 @@
   };
 
   const cfg = (window.APP_CONFIG && mergeConfig(defaultConfig, window.APP_CONFIG)) || defaultConfig;
+
+  // Normalize schema: remove PK/SK fields and deduplicate by name (case-insensitive)
+  (function normalizeSchema() {
+    if (!Array.isArray(cfg.schema)) return;
+    const norm = (s) => String(s || "").trim().toLowerCase();
+    const pkN = norm(cfg.partitionKeyName);
+    const skN = norm(cfg.sortKeyName);
+    const seen = new Set();
+    const filtered = [];
+    for (const f of cfg.schema) {
+      const nameN = norm(f && f.name);
+      if (!nameN) continue;
+      if (nameN === pkN || (skN && nameN === skN)) continue;
+      if (seen.has(nameN)) continue;
+      seen.add(nameN);
+      filtered.push(f);
+    }
+    cfg.schema = filtered;
+  })();
 
   const el = (id) => document.getElementById(id);
   const statusEl = el("status");
@@ -40,6 +60,7 @@
   const skInput = el("skInput");
   const attributesInput = el("attributesInput");
   const attributesRow = el("attributesRow");
+  const attributesFields = el("attributesFields");
   const formTitle = el("formTitle");
   const saveBtn = el("saveBtn");
   const cancelEditBtn = el("cancelEditBtn");
@@ -70,10 +91,157 @@
   formSection.classList.add("hidden");
   tableSection.classList.add("hidden");
 
+  // Render schema-driven fields if provided
+  if (hasSchema()) { try { document.body && document.body.setAttribute("data-schema", "on"); } catch (_) {} }
+  renderAttributeFields();
+
   let editState = { isEditing: false, pk: null, sk: null };
   let allItems = [];
   let columnOrder = [];
   let lastRendered = [];
+
+  function hasSchema() { return Array.isArray(cfg.schema) && cfg.schema.length > 0; }
+  function fieldId(name) { return `attr_${String(name).replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
+
+  function getFilteredSchema() { return Array.isArray(cfg.schema) ? cfg.schema.slice() : []; }
+
+  function renderAttributeFields() {
+    if (!hasSchema()) { if (attributesFields) attributesFields.classList.add("hidden"); attributesInput.classList.remove("hidden"); return; }
+    attributesFields.innerHTML = "";
+    for (const field of getFilteredSchema()) {
+      const wrap = document.createElement("div");
+      wrap.className = "form-row compact";
+      const label = document.createElement("label");
+      label.textContent = field.label || field.name;
+      label.htmlFor = fieldId(field.name);
+      const input = document.createElement("input");
+      input.id = fieldId(field.name);
+      input.name = field.name;
+      input.type = field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "email" ? "email" : "text";
+      if (field.placeholder) input.placeholder = field.placeholder;
+      if (field.required) input.required = true;
+      wrap.appendChild(label);
+      wrap.appendChild(input);
+      attributesFields.appendChild(wrap);
+    }
+    attributesFields.classList.remove("hidden");
+    attributesInput.classList.add("hidden");
+  }
+
+  function renderUpdateSingleFieldUI(prefill) {
+    if (!hasSchema()) { attributesFields.classList.add("hidden"); attributesInput.classList.remove("hidden"); return; }
+    const schema = getFilteredSchema();
+    attributesFields.innerHTML = "";
+    // Select row
+    const row1 = document.createElement("div"); row1.className = "form-row";
+    const labSel = document.createElement("label"); labSel.textContent = "Select attribute to update"; labSel.htmlFor = "attr_select"; row1.appendChild(labSel);
+    const select = document.createElement("select"); select.id = "attr_select"; row1.appendChild(select);
+    for (const f of schema) { const opt = document.createElement("option"); opt.value = f.name; opt.textContent = f.label || f.name; select.appendChild(opt); }
+    attributesFields.appendChild(row1);
+    // Value row
+    const row2 = document.createElement("div"); row2.className = "form-row";
+    const labVal = document.createElement("label"); labVal.textContent = "New value"; labVal.htmlFor = "attr_value"; row2.appendChild(labVal);
+    const input = document.createElement("input"); input.id = "attr_value"; input.type = "text"; row2.appendChild(input);
+    attributesFields.appendChild(row2);
+
+    function syncInputType() {
+      const name = select.value;
+      const f = schema.find(s => s.name === name);
+      const t = f && f.type;
+      input.type = t === "number" ? "number" : t === "date" ? "date" : t === "email" ? "email" : "text";
+      if (f && f.placeholder) input.placeholder = f.placeholder; else input.placeholder = "";
+    }
+    select.addEventListener("change", syncInputType);
+    syncInputType();
+
+    if (prefill && typeof prefill === "object") {
+      const entries = Object.entries(prefill);
+      if (entries.length > 0) {
+        select.value = entries[0][0];
+        syncInputType();
+        input.value = entries[0][1];
+      }
+    }
+
+    attributesFields.classList.remove("hidden");
+    attributesInput.classList.add("hidden");
+  }
+
+  function coerceValueByType(val, type) {
+    if (val == null || val === "") return undefined;
+    if (type === "number") { const n = Number(val); return Number.isFinite(n) ? n : undefined; }
+    if (type === "boolean") { return String(val).toLowerCase() === "true"; }
+    if (type === "date") { return val; }
+    if (type === "email") { return String(val).trim(); }
+    return String(val);
+  }
+
+  function getAttributesFromForm(forUpdate) {
+    if (!hasSchema()) return safeParseJson(attributesInput.value);
+    // Update mode with dropdown + single input
+    const selEl = document.getElementById("attr_select");
+    const valEl = document.getElementById("attr_value");
+    if (forUpdate && selEl && valEl) {
+      const name = selEl.value;
+      const f = getFilteredSchema().find(x => x.name === name) || {};
+      const v = coerceValueByType(valEl.value, f.type);
+      const out = {};
+      if (v !== undefined && v !== "") out[name] = v;
+      return out;
+    }
+    // Create mode: collect all fields
+    const out = {};
+    let countFilled = 0;
+    for (const field of getFilteredSchema()) {
+      const input = document.getElementById(fieldId(field.name));
+      if (!input) continue;
+      const v = coerceValueByType(input.value, field.type);
+      if (v !== undefined && v !== "") { out[field.name] = v; countFilled++; }
+    }
+    if (forUpdate) {
+      if (countFilled !== 1) throw new Error("For update, fill exactly one attribute field.");
+    }
+    return out;
+  }
+
+  function setAttributesToForm(attrs, onlyFirst) {
+    if (!hasSchema()) {
+      attributesInput.value = JSON.stringify(attrs && typeof attrs === "object" ? attrs : {}, null, 2);
+      return;
+    }
+    // If update UI is present, set select/value
+    const selEl = document.getElementById("attr_select");
+    const valEl = document.getElementById("attr_value");
+    if (selEl && valEl) {
+      const entries = Object.entries(attrs || {});
+      if (entries.length > 0) {
+        selEl.value = entries[0][0];
+        valEl.value = entries[0][1];
+      } else {
+        valEl.value = "";
+      }
+      return;
+    }
+    // Otherwise, populate create form inputs
+    for (const field of getFilteredSchema()) {
+      const input = document.getElementById(fieldId(field.name));
+      if (input) input.value = "";
+    }
+    if (!attrs || typeof attrs !== "object") return;
+    if (onlyFirst) {
+      const entries = Object.entries(attrs);
+      if (entries.length > 0) {
+        const [k, v] = entries[0];
+        const input = document.getElementById(fieldId(k));
+        if (input) input.value = v;
+      }
+      return;
+    }
+    for (const [k, v] of Object.entries(attrs)) {
+      const input = document.getElementById(fieldId(k));
+      if (input) input.value = v;
+    }
+  }
 
   function mergeConfig(base, override) {
     const out = { ...base, ...override };
@@ -474,10 +642,16 @@
     // Prefill only the first attribute (single field) to align with PATCH semantics
     const entries = Object.entries(attributes || {});
     if (entries.length > 0) {
-      const [firstKey, firstVal] = entries[0];
-      attributesInput.value = JSON.stringify({ [firstKey]: firstVal }, null, 2);
+      if (hasSchema()) {
+        renderUpdateSingleFieldUI(Object.fromEntries([entries[0]]));
+        attributesFields.classList.remove("hidden");
+        attributesInput.classList.add("hidden");
+      } else {
+        const [firstKey, firstVal] = entries[0];
+        attributesInput.value = JSON.stringify({ [firstKey]: firstVal }, null, 2);
+      }
     } else {
-      attributesInput.value = "{}";
+      if (hasSchema()) renderUpdateSingleFieldUI(); else attributesInput.value = "{}";
     }
     showSection("form");
   }
@@ -532,6 +706,7 @@
     saveBtn.textContent = "Create";
     attributesRow.classList.remove("hidden");
     csvRow.classList.remove("hidden");
+    if (hasSchema()) { renderAttributeFields(); }
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -540,10 +715,11 @@
   updateBtn.addEventListener("click", () => {
     cancelEdit();
     currentMode = "update";
-    formTitle.textContent = "Update Item (enter exactly one attribute)";
+    formTitle.textContent = "Update Item (choose field and value)";
     saveBtn.textContent = "Update";
     attributesRow.classList.remove("hidden");
     csvRow.classList.add("hidden");
+    if (hasSchema()) { renderUpdateSingleFieldUI(); }
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -595,7 +771,9 @@
     if (!pk) { setStatus("Partition key is required", true); return; }
     if (cfg.sortKeyName && !sk) { setStatus("Sort key is required", true); return; }
     let attrs;
-    try { attrs = safeParseJson(attributesInput.value); } catch (e) { setStatus(e.message, true); return; }
+    try {
+      attrs = hasSchema() ? getAttributesFromForm(currentMode === "update") : safeParseJson(attributesInput.value);
+    } catch (e) { setStatus(e.message, true); return; }
     const isEditFromRow = editState.isEditing && currentMode !== "delete";
     const action = currentMode === "delete" ? "delete" : (isEditFromRow || currentMode === "update" ? "update" : "create");
     setStatus(action === "delete" ? "Deleting..." : action === "update" ? "Updating..." : "Creating...");

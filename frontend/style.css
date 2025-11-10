@@ -108,6 +108,10 @@ input:focus, textarea:focus {
 .hidden { display: none; }
 .muted { color: var(--muted); }
 
+/* When schema is present, prefer generated inputs over JSON textarea */
+body[data-schema="on"] #attributesInput { display: none !important; }
+body[data-schema="on"] #attributesFields { display: block !important; }
+
 /* Table controls */
 .table-controls {
   display: flex;
