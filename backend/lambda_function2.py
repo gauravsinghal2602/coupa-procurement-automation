@@ -93,11 +93,23 @@ def lambda_handler(event, context):
             response = saveSupplier(request_body)
 
     elif httpMethod == patchMethod and path == supplierPath:
-        # UPDATE: PATCH /supplier
+        # UPDATE: PATCH /supplier (supports single or multiple attribute updates)
         requestBody = json.loads(event.get('body', '{}'))
         pk = requestBody.get('SAP vendor code')
         sk = requestBody.get('Plant Code')
-        response = modifySupplier(pk, sk, requestBody.get('updateKey'), requestBody.get('updateValue'))
+        # Backward compatibility: updateKey/updateValue
+        updates = {}
+        if isinstance(requestBody.get('updates'), dict) and requestBody.get('updates'):
+            updates = requestBody.get('updates')
+        elif 'updateKey' in requestBody:
+            updates = {requestBody.get('updateKey'): requestBody.get('updateValue')}
+        else:
+            # Treat any non-key fields in body as updates
+            for k, v in requestBody.items():
+                if k in ('SAP vendor code', 'Plant Code', 'updateKey', 'updateValue'):
+                    continue
+                updates[k] = v
+        response = modifySupplier(pk, sk, updates)
         
     elif httpMethod == deleteMethod and path == supplierPath:
         # DELETE: DELETE /supplier
@@ -390,24 +402,28 @@ def saveSupplier(requestBody):
         logger.error('Error saving supplier: %s', error)
         return buildResponse(500,{'error': f'Error saving supplier: {error}'})
 
-def modifySupplier(pk, sk, updateKey, updateValue):
-    # ... (Your original modifySupplier logic)
+def modifySupplier(pk, sk, updates):
+    # Multi-field update support; accepts a dict of attribute name -> value
     try:
         if not pk or not sk:
             return buildResponse(400, {'message': 'Missing SAP vendor code or Plant Code.'})
-            
-        attribute_placeholder = "#UKey"
-        value_placeholder = ":val"
+        if not isinstance(updates, dict) or len(updates) == 0:
+            return buildResponse(400, {'message': 'No attributes provided to update.'})
 
-        update_expression = f"SET {attribute_placeholder} = {value_placeholder}"
+        set_clauses = []
+        expression_attribute_names = {}
+        expression_attribute_values = {}
 
-        expression_attribute_names = {
-            attribute_placeholder: updateKey
-        }
+        i = 0
+        for attr, value in updates.items():
+            name_ph = f"#U{i}"
+            value_ph = f":v{i}"
+            set_clauses.append(f"{name_ph} = {value_ph}")
+            expression_attribute_names[name_ph] = attr
+            expression_attribute_values[value_ph] = value
+            i += 1
 
-        expression_attribute_values = {
-            value_placeholder: updateValue
-        }
+        update_expression = "SET " + ", ".join(set_clauses)
 
         response = table.update_item(
             Key={'SAP vendor code': pk, 'Plant Code': sk},

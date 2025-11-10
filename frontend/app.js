@@ -128,43 +128,9 @@
     attributesInput.classList.add("hidden");
   }
 
-  function renderUpdateSingleFieldUI(prefill) {
-    if (!hasSchema()) { attributesFields.classList.add("hidden"); attributesInput.classList.remove("hidden"); return; }
-    const schema = getFilteredSchema();
-    attributesFields.innerHTML = "";
-    // Select row
-    const row1 = document.createElement("div"); row1.className = "form-row";
-    const labSel = document.createElement("label"); labSel.textContent = "Select attribute to update"; labSel.htmlFor = "attr_select"; row1.appendChild(labSel);
-    const select = document.createElement("select"); select.id = "attr_select"; row1.appendChild(select);
-    for (const f of schema) { const opt = document.createElement("option"); opt.value = f.name; opt.textContent = f.label || f.name; select.appendChild(opt); }
-    attributesFields.appendChild(row1);
-    // Value row
-    const row2 = document.createElement("div"); row2.className = "form-row";
-    const labVal = document.createElement("label"); labVal.textContent = "New value"; labVal.htmlFor = "attr_value"; row2.appendChild(labVal);
-    const input = document.createElement("input"); input.id = "attr_value"; input.type = "text"; row2.appendChild(input);
-    attributesFields.appendChild(row2);
-
-    function syncInputType() {
-      const name = select.value;
-      const f = schema.find(s => s.name === name);
-      const t = f && f.type;
-      input.type = t === "number" ? "number" : t === "date" ? "date" : t === "email" ? "email" : "text";
-      if (f && f.placeholder) input.placeholder = f.placeholder; else input.placeholder = "";
-    }
-    select.addEventListener("change", syncInputType);
-    syncInputType();
-
-    if (prefill && typeof prefill === "object") {
-      const entries = Object.entries(prefill);
-      if (entries.length > 0) {
-        select.value = entries[0][0];
-        syncInputType();
-        input.value = entries[0][1];
-      }
-    }
-
-    attributesFields.classList.remove("hidden");
-    attributesInput.classList.add("hidden");
+  function renderUpdateSingleFieldUI(prefill) { /* deprecated: keep for fallback; multi-field update is default now */
+    renderAttributeFields();
+    if (prefill) setAttributesToForm(prefill, true);
   }
 
   function coerceValueByType(val, type) {
@@ -199,7 +165,8 @@
       if (v !== undefined && v !== "") { out[field.name] = v; countFilled++; }
     }
     if (forUpdate) {
-      if (countFilled !== 1) throw new Error("For update, fill exactly one attribute field.");
+      // In multi-field update mode, allow 1..N fields; require at least one
+      if (countFilled < 1) throw new Error("For update, fill at least one attribute field.");
     }
     return out;
   }
@@ -330,18 +297,9 @@
     const payload = { [cfg.partitionKeyName]: pk };
     if (cfg.sortKeyName && sk != null) payload[cfg.sortKeyName] = sk;
     const attrs = attributes || {};
-    const hasExplicit = Object.prototype.hasOwnProperty.call(attrs, "updateKey") && Object.prototype.hasOwnProperty.call(attrs, "updateValue");
-    if (hasExplicit) {
-      payload.updateKey = attrs.updateKey;
-      payload.updateValue = attrs.updateValue;
-    } else {
-      const entries = Object.entries(attrs).filter(([k]) => k !== cfg.partitionKeyName && k !== cfg.sortKeyName);
-      if (entries.length === 0) {
-        throw new Error("For PATCH, provide updateKey/updateValue or a single field to update.");
-      }
-      const [onlyKey, onlyVal] = entries[0];
-      payload.updateKey = onlyKey;
-      payload.updateValue = onlyVal;
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === cfg.partitionKeyName || k === cfg.sortKeyName) continue;
+      payload[k] = v;
     }
     return JSON.stringify(payload);
   }
@@ -639,11 +597,12 @@
       skInput.value = sk != null ? String(sk) : "";
       skInput.disabled = true;
     }
-    // Prefill only the first attribute (single field) to align with PATCH semantics
+    // Prefill attributes from row: put first only for convenience, but UI supports multi
     const entries = Object.entries(attributes || {});
     if (entries.length > 0) {
       if (hasSchema()) {
-        renderUpdateSingleFieldUI(Object.fromEntries([entries[0]]));
+        renderAttributeFields();
+        setAttributesToForm(Object.fromEntries([entries[0]]), true);
         attributesFields.classList.remove("hidden");
         attributesInput.classList.add("hidden");
       } else {
@@ -651,7 +610,7 @@
         attributesInput.value = JSON.stringify({ [firstKey]: firstVal }, null, 2);
       }
     } else {
-      if (hasSchema()) renderUpdateSingleFieldUI(); else attributesInput.value = "{}";
+      if (hasSchema()) renderAttributeFields(); else attributesInput.value = "{}";
     }
     showSection("form");
   }
@@ -715,11 +674,11 @@
   updateBtn.addEventListener("click", () => {
     cancelEdit();
     currentMode = "update";
-    formTitle.textContent = "Update Item (choose field and value)";
+    formTitle.textContent = "Update Item (fill one or more fields)";
     saveBtn.textContent = "Update";
     attributesRow.classList.remove("hidden");
     csvRow.classList.add("hidden");
-    if (hasSchema()) { renderUpdateSingleFieldUI(); }
+    if (hasSchema()) { renderAttributeFields(); }
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
