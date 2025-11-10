@@ -83,7 +83,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  overflow-x: auto;
 }
+
+.table-scroll { overflow-x: auto; }
+.table-scroll table { width: max-content; min-width: 100%; }
 
 .form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .form-row.compact { margin-bottom: 0; }
@@ -162,6 +166,8 @@ body[data-schema="on"] #attributesFields { display: block !important; }
 }
 
 table { width: 100%; border-collapse: collapse; }
+/* Allow table to grow wider than container and enable horizontal scroll */
+.table-section table { width: max-content; min-width: 100%; }
 th, td { border-bottom: 1px solid var(--border); padding: 12px; text-align: left; vertical-align: top; }
 thead th { position: sticky; top: 0; background: #ffffff; z-index: 1; box-shadow: 0 1px 0 var(--border); }
 th { color: var(--muted); font-weight: 600; }
