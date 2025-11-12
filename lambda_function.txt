@@ -4,6 +4,7 @@ import logging
 import base64
 import csv
 import io
+from datetime import datetime # Import datetime
 from decimal import Decimal
 
 # --- Configuration & Initialization ---
@@ -114,9 +115,7 @@ def lambda_handler(event, context):
     elif httpMethod == deleteMethod and path == supplierPath:
         # DELETE: DELETE /supplier
         requestBody = json.loads(event.get('body', '{}'))
-        pk = requestBody.get('SAP vendor code')
-        sk = requestBody.get('Plant Code')
-        response = deleteSupplier(pk, sk)
+        response = deleteSupplier(requestBody)
         
     else:
         response = buildResponse(404, {'message': 'Not Found'})
@@ -391,7 +390,14 @@ def saveSupplier(requestBody):
     try:
         if 'SAP vendor code' not in requestBody or 'Plant Code' not in requestBody:
             return buildResponse(400, {'message': 'Missing required primary keys for SAVE.'})
-            
+        
+        # Add new attributes for creation
+        current_time = datetime.utcnow().isoformat() + 'Z' # ISO 8601 format with 'Z' for UTC
+        requestBody['created_at'] = current_time
+        requestBody['updated_at'] = current_time
+        requestBody['created_by'] = 'system' # Placeholder, replace with actual user if available
+        requestBody['status'] = 'active' # Default status
+
         table.put_item(Item=requestBody)
         
         body = {
@@ -423,6 +429,11 @@ def modifySupplier(pk, sk, updates):
             cleaned_updates[k] = v
         if len(cleaned_updates) == 0:
             return buildResponse(400, {'message': 'No non-empty values provided to update.'})
+
+        # Add updated_at and updated_by automatically
+        current_time = datetime.utcnow().isoformat() + 'Z'
+        cleaned_updates['updated_at'] = current_time
+        cleaned_updates['updated_by'] = 'system' # Placeholder, replace with actual user if available
 
         set_clauses = []
         expression_attribute_names = {}
@@ -457,24 +468,50 @@ def modifySupplier(pk, sk, updates):
         logger.error('Error modifying supplier: %s', e)
         return buildResponse(500,{'error': f'Error modifying supplier: {str(e)}'})
 
-def deleteSupplier(pk, sk):
-    # ... (Your original deleteSupplier logic)
+def deleteSupplier(requestBody):
+    # Soft delete: update status to 'deleted' instead of physical deletion
     try:
+        pk = requestBody.get('SAP vendor code')
+        sk = requestBody.get('Plant Code')
+        reason_delete = requestBody.get('reason_delete', 'N/A') # Optional reason for deletion
+
         if not pk or not sk:
-            return buildResponse(400, {'message': 'Missing SAP vendor code or Plant Code.'})
-            
-        response = table.delete_item(Key={'SAP vendor code': pk, 'Plant Code': sk}, ReturnValues='ALL_OLD')
+            return buildResponse(400, {'message': 'Missing SAP vendor code or Plant Code for DELETE.'})
+        
+        current_time = datetime.utcnow().isoformat() + 'Z'
+        
+        update_expression = "SET #st = :newStatus, #ua = :updatedAt, #ub = :updatedBy, #rd = :reasonDelete"
+        expression_attribute_names = {
+            '#st': 'status',
+            '#ua': 'updated_at',
+            '#ub': 'updated_by',
+            '#rd': 'reason_delete'
+        }
+        expression_attribute_values = {
+            ':newStatus': 'deleted',
+            ':updatedAt': current_time,
+            ':updatedBy': 'system', # Placeholder, replace with actual user if available
+            ':reasonDelete': reason_delete
+        }
+
+        response = table.update_item(
+            Key={'SAP vendor code': pk, 'Plant Code': sk},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues='ALL_NEW' # Return all new attributes of the item
+        )
         
         body = {
-            'Operation': 'DELETE',
+            'Operation': 'SOFT_DELETE',
             'Message': 'SUCCESS',
-            'DeletedItem': response.get('Attributes')
+            'UpdatedItem': response.get('Attributes')
         }
         return buildResponse(200,body) 
         
     except Exception as e:
-        logger.error('Error deleting supplier: %s', e)
-        return buildResponse(500,{'error': f'Error deleting supplier: {str(e)}'})
+        logger.error('Error soft-deleting supplier: %s', e)
+        return buildResponse(500,{'error': f'Error soft-deleting supplier: {str(e)}'})
 
 def buildResponse(statusCode, body=None):
     # ... (Your original buildResponse logic)

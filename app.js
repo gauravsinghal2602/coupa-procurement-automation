@@ -116,7 +116,10 @@
   function hasSchema() { return Array.isArray(cfg.schema) && cfg.schema.length > 0; }
   function fieldId(name) { return `attr_${String(name).replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
 
-  function getFilteredSchema() { return Array.isArray(cfg.schema) ? cfg.schema.slice() : []; }
+  function getFilteredSchema() {
+    const internalFields = ['created_by', 'updated_by', 'created_at', 'updated_at', 'status', 'reason_update', 'reason_delete'];
+    return Array.isArray(cfg.schema) ? cfg.schema.filter(field => !internalFields.includes(field.name)) : [];
+  }
 
   function renderAttributeFields() {
     if (!hasSchema()) { if (attributesFields) attributesFields.classList.add("hidden"); attributesInput.classList.remove("hidden"); return; }
@@ -331,39 +334,42 @@
     // Build dynamic columns: pk, sk (if any), plus union of other keys
     const pkName = cfg.partitionKeyName;
     const skName = cfg.sortKeyName;
-    let otherKeys = columnOrder;
-    if (!otherKeys || otherKeys.length === 0) {
-      const otherKeysSet = new Set();
-      if (Array.isArray(items)) {
-        for (const it of items) {
-          if (!it || typeof it !== "object") continue;
-          for (const k of Object.keys(it)) {
-            if (k === pkName || (skName && k === skName)) continue;
-            otherKeysSet.add(k);
-          }
-        }
-      }
-      otherKeys = Array.from(otherKeysSet);
-      columnOrder = otherKeys.slice();
-    }
-
+    
+    // Use schema to define column order and display
+    const schemaFields = cfg.schema.map(field => field.name);
+    const excludedFields = ['created_by', 'updated_by', 'created_at', 'updated_at', 'status', 'reason_update', 'reason_delete'];
+    const displayFields = schemaFields.filter(field => !excludedFields.includes(field));
+    
     // Render header
     const headerRow = document.createElement("tr");
+    // Render PK and SK first
     const thPk = document.createElement("th"); thPk.textContent = pkName; headerRow.appendChild(thPk);
     if (skName) { const thSk = document.createElement("th"); thSk.textContent = skName; headerRow.appendChild(thSk); }
-    for (const k of otherKeys) { const th = document.createElement("th"); th.textContent = k; headerRow.appendChild(th); }
+
+    // Render other schema fields
+    for (const fieldName of displayFields) {
+      if (fieldName === pkName || (skName && fieldName === skName)) continue; // Skip PK/SK as they are already added
+      const schemaField = cfg.schema.find(f => f.name === fieldName);
+      if (schemaField) {
+        const th = document.createElement("th");
+        th.textContent = schemaField.label || schemaField.name; // Use label if available, otherwise name
+        headerRow.appendChild(th);
+      }
+    }
+
     const thActions = document.createElement("th"); thActions.textContent = "Actions"; headerRow.appendChild(thActions);
     itemsThead.innerHTML = "";
     itemsThead.appendChild(headerRow);
-    // Populate filter field options for each condition row
+
+    // Populate filter field options for each condition row - needs to use all possible fields
     const selects = conditionsEl.querySelectorAll('select.condition-field');
-    selects.forEach((sel) => populateFieldOptions(sel, pkName, skName, otherKeys));
+    selects.forEach((sel) => populateFieldOptions(sel, pkName, skName, schemaFields));
 
     // Render body
     if (!Array.isArray(items) || items.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      const colCount = 1 + (skName ? 1 : 0) + otherKeys.length + 1; // pk + sk? + others + actions
+      const colCount = 1 + (skName ? 1 : 0) + displayFields.length + 1; // pk + sk? + all *displayed* schema fields + actions
       td.colSpan = colCount;
       td.className = "muted";
       td.textContent = "No items found.";
@@ -380,9 +386,11 @@
       const tdPk = document.createElement("td"); tdPk.textContent = valueToString(pk); tr.appendChild(tdPk);
       if (skName) { const tdSk = document.createElement("td"); tdSk.textContent = valueToString(sk); tr.appendChild(tdSk); }
 
-      for (const k of otherKeys) {
+      // Render other schema fields
+      for (const fieldName of displayFields) {
+        if (fieldName === pkName || (skName && fieldName === skName)) continue; // Skip PK/SK
         const td = document.createElement("td");
-        td.textContent = valueToString(item[k]);
+        td.textContent = valueToString(item[fieldName]);
         tr.appendChild(td);
       }
 
@@ -683,7 +691,9 @@
     if (!confirm(`Delete item ${keyDesc}?`)) return;
     setStatus("Deleting...");
     try {
-      await apiDelete(pk, sk);
+      const deleteBody = { 'SAP vendor code': pk, 'Plant Code': sk };
+      deleteBody.reason_delete = 'UI Delete'; // Default reason for deletion from UI
+      await apiDelete(deleteBody);
       setStatus("Deleted.");
       await refresh();
     } catch (e) {
