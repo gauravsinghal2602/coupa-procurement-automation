@@ -55,6 +55,10 @@
   const clearFilterBtn = el("clearFilterBtn");
   const downloadAllBtn = el("downloadAllBtn");
   const downloadFilteredBtn = el("downloadFilteredBtn");
+  const pageSizeSelect = el("pageSizeSelect");
+  const prevPageBtn = el("prevPageBtn");
+  const nextPageBtn = el("nextPageBtn");
+  const pageInfo = el("pageInfo");
   const itemForm = el("itemForm");
   const pkInput = el("pkInput");
   const skInput = el("skInput");
@@ -99,6 +103,15 @@
   let allItems = [];
   let columnOrder = [];
   let lastRendered = [];
+  let currentPage = 1;
+  let pageSize = 25;
+  let filteredItems = null; // if set, paginate this instead of allItems
+
+  // Initialize page size from UI if present
+  if (pageSizeSelect && pageSizeSelect.value) {
+    const n = Number(pageSizeSelect.value);
+    if (Number.isFinite(n) && n > 0) pageSize = n;
+  }
 
   function hasSchema() { return Array.isArray(cfg.schema) && cfg.schema.length > 0; }
   function fieldId(name) { return `attr_${String(name).replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
@@ -402,6 +415,39 @@
     return String(val);
   }
 
+  function getSourceItems() {
+    return Array.isArray(filteredItems) ? filteredItems : allItems;
+  }
+
+  function getPageCount(items) {
+    const total = Array.isArray(items) ? items.length : 0;
+    return Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  }
+
+  function getPagedItems(items) {
+    if (!Array.isArray(items)) return [];
+    const start = (currentPage - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }
+
+  function updatePaginationControls(totalItems) {
+    const total = Array.isArray(totalItems) ? totalItems.length : 0;
+    const totalPages = getPageCount(totalItems);
+    if (pageInfo) pageInfo.textContent = `Page ${totalPages === 0 ? 0 : currentPage} / ${totalPages} • ${total} items`;
+    if (prevPageBtn) prevPageBtn.disabled = currentPage <= 1;
+    if (nextPageBtn) nextPageBtn.disabled = currentPage >= totalPages;
+  }
+
+  function renderPage() {
+    const src = getSourceItems();
+    const totalPages = getPageCount(src);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const pageItems = getPagedItems(src);
+    renderItems(pageItems);
+    updatePaginationControls(src);
+  }
+
   async function refresh() {
     setStatus("Loading...");
     try {
@@ -410,7 +456,9 @@
         ? data
         : (data.items || data.Items || data.suppliers || data.Suppliers || []);
       allItems = items;
-      renderItems(allItems);
+      filteredItems = null;
+      currentPage = 1;
+      renderPage();
       setStatus("Loaded.");
     } catch (e) {
       console.error(e);
@@ -420,7 +468,7 @@
 
   function applyFilter() {
     const conds = getConditions();
-    if (conds.length === 0) { renderItems(allItems); return; }
+    if (conds.length === 0) { filteredItems = null; currentPage = 1; renderPage(); return; }
     const filtered = allItems.filter((row) => {
       // AND across all conditions
       for (const c of conds) {
@@ -441,7 +489,9 @@
       }
       return true;
     });
-    renderItems(filtered);
+    filteredItems = filtered;
+    currentPage = 1;
+    renderPage();
   }
 
   function getConditions() {
@@ -720,7 +770,7 @@
 
   // Filter handlers
   applyFilterBtn.addEventListener("click", applyFilter);
-  clearFilterBtn.addEventListener("click", () => { conditionsEl.innerHTML = ""; addConditionRow(); renderItems(allItems); });
+  clearFilterBtn.addEventListener("click", () => { conditionsEl.innerHTML = ""; addConditionRow(); filteredItems = null; currentPage = 1; renderPage(); });
   addConditionBtn.addEventListener("click", addConditionRow);
 
   // Start with one empty condition row
@@ -769,6 +819,35 @@
   });
 
   cancelEditBtn.addEventListener("click", cancelEdit);
+
+  // Pagination controls
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener("change", () => {
+      const n = Number(pageSizeSelect.value);
+      if (Number.isFinite(n) && n > 0) {
+        pageSize = n;
+        currentPage = 1;
+        renderPage();
+      }
+    });
+  }
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage -= 1;
+        renderPage();
+      }
+    });
+  }
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener("click", () => {
+      const totalPages = getPageCount(getSourceItems());
+      if (currentPage < totalPages) {
+        currentPage += 1;
+        renderPage();
+      }
+    });
+  }
 
   // Function to generate token and update config
   async function initializeToken() {
