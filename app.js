@@ -296,9 +296,15 @@
     return res.json().catch(() => ({}));
   }
 
-  async function apiDelete(pk, sk) {
+  async function apiDelete(deletePayload) {
     const url = buildUrl(cfg.endpoints.delete);
-    const body = buildBody(pk, sk, {});
+    const pk = deletePayload[cfg.partitionKeyName];
+    const sk = cfg.sortKeyName ? deletePayload[cfg.sortKeyName] : null;
+    const attributes = { ...deletePayload };
+    delete attributes[cfg.partitionKeyName];
+    if (cfg.sortKeyName) delete attributes[cfg.sortKeyName];
+    
+    const body = buildBody(pk, sk, attributes);
     const res = await fetch(url, { ...cfg.requestInit, method: "DELETE", body });
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
     return res.json().catch(() => ({}));
@@ -688,11 +694,13 @@
 
   async function onDelete(pk, sk) {
     const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${pk}, ${cfg.sortKeyName}=${sk}` : `${cfg.partitionKeyName}=${pk}`;
-    if (!confirm(`Delete item ${keyDesc}?`)) return;
+    const reason = prompt(`Reason for deleting item ${keyDesc}:`);
+    if (reason === null) return; // User cancelled the prompt
+    
     setStatus("Deleting...");
     try {
       const deleteBody = { 'SAP vendor code': pk, 'Plant Code': sk };
-      deleteBody.reason_delete = 'UI Delete'; // Default reason for deletion from UI
+      deleteBody.reason_delete = reason || 'UI Delete (no reason provided)'; // Use provided reason or a default
       await apiDelete(deleteBody);
       setStatus("Deleted.");
       await refresh();
@@ -802,7 +810,13 @@
     saveBtn.disabled = true;
     try {
       if (action === "delete") {
-        await apiDelete(pk, sk);
+        const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${pk}, ${cfg.sortKeyName}=${sk}` : `${cfg.partitionKeyName}=${pk}`;
+        const reason = prompt(`Reason for deleting item ${keyDesc}:`);
+        if (reason === null) return; // User cancelled the prompt
+
+        const deleteBody = { 'SAP vendor code': pk, 'Plant Code': sk };
+        deleteBody.reason_delete = reason || 'UI Delete (no reason provided from form)'; // Use provided reason or a default
+        await apiDelete(deleteBody);
         setStatus("Deleted.");
         itemForm.reset();
         showSection("table");

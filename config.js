@@ -23,7 +23,7 @@ window.APP_CONFIG = {
       mode: "cors",
     },
     schema: [
-      { name: "Commodity/Category Name", label: "Commodity / Category Name", type: "text", required: true },
+      { name: "Commodity/category Name", label: "Commodity / category Name", type: "text", required: true },
       { name: "Key words", label: "Key words", type: "text" },
       { name: "Plant Code", label: "Plant Code", type: "text", required: true },
       { name: "Plant Name", label: "Plant Name", type: "text" },

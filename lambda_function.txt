@@ -488,7 +488,7 @@ def deleteSupplier(requestBody):
             '#rd': 'reason_delete'
         }
         expression_attribute_values = {
-            ':newStatus': 'deleted',
+            ':newStatus': 'inactive',
             ':updatedAt': current_time,
             ':updatedBy': 'system', # Placeholder, replace with actual user if available
             ':reasonDelete': reason_delete
