@@ -824,6 +824,12 @@
       } else if (action === "update") {
         const targetPk = isEditFromRow ? editState.pk : pk;
         const targetSk = isEditFromRow ? editState.sk : sk;
+
+        const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${targetPk}, ${cfg.sortKeyName}=${targetSk}` : `${cfg.partitionKeyName}=${targetPk}`;
+        const reason = prompt(`Reason for updating item ${keyDesc}:`);
+        if (reason === null) return; // User cancelled the prompt
+        attrs.reason_update = reason || 'UI Update (no reason provided from form)'; // Use provided reason or a default
+
         await apiUpdate(targetPk, targetSk, attrs);
         setStatus("Updated.");
         cancelEdit();
