@@ -141,7 +141,10 @@ def processFileUpload(event):
         file_content_bytes = base64.b64decode(encoded_data)
         
         # 2. Parse the CSV data
-        file_content_stream = io.StringIO(file_content_bytes.decode('utf-8'))
+        file_content_string = file_content_bytes.decode('utf-8')
+        # Normalize newlines to ensure consistent parsing by csv.DictReader
+        normalized_file_content = '\n'.join(file_content_string.splitlines())
+        file_content_stream = io.StringIO(normalized_file_content)
         records_to_insert = parse_csv(file_content_stream)
         
         if not records_to_insert:
