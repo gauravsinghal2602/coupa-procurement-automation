@@ -190,6 +190,13 @@ def parse_csv(file_stream):
         processed_row[pk_key] = str(pk_val).strip()
         processed_row[sk_key] = str(sk_val).strip()
 
+        # Add default metadata for new records from CSV
+        current_time = datetime.utcnow().isoformat() + 'Z'
+        processed_row['created_at'] = current_time
+        # processed_row['updated_at'] = current_time # Remove updated_at for new records from CSV
+        processed_row['created_by'] = 'system' # Placeholder for CSV upload
+        processed_row['status'] = 'active'
+
         # 2. Process all other attributes
         for key, value in row.items():
             
@@ -394,7 +401,7 @@ def saveSupplier(requestBody):
         # Add new attributes for creation
         current_time = datetime.utcnow().isoformat() + 'Z' # ISO 8601 format with 'Z' for UTC
         requestBody['created_at'] = current_time
-        requestBody['updated_at'] = current_time
+        # requestBody['updated_at'] = current_time # Remove updated_at for new records
         requestBody['created_by'] = 'system' # Placeholder, replace with actual user if available
         requestBody['status'] = 'active' # Default status
 
