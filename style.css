@@ -192,6 +192,14 @@ footer.page-footer {
   text-align: center;
 }
 
+.pagination-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
 /* Reduced motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

@@ -85,6 +85,18 @@
                     </tbody>
                 </table>
             </div>
+            <div class="pagination-controls">
+                <label for="pageSizeSelect">Rows/page</label>
+                <select id="pageSizeSelect" class="secondary">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+                <button type="button" id="prevPageBtn" class="secondary">Prev</button>
+                <span id="pageInfo" class="muted">Page 1 / 1</span>
+                <button type="button" id="nextPageBtn" class="secondary">Next</button>
+            </div>
         </section>
     </div>
 
