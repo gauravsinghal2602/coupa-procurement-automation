@@ -71,6 +71,7 @@
   const csvRow = document.getElementById("csvRow");
   const csvInput = document.getElementById("csvInput");
   const uploadCsvBtn = document.getElementById("uploadCsvBtn");
+  const viewDeletedBtn = el("viewDeletedBtn"); // Get the new button
   const formSection = document.getElementById("formSection");
   const tableSection = document.getElementById("tableSection");
   const pkHeader = el("pkHeader");
@@ -106,6 +107,7 @@
   let currentPage = 1;
   let pageSize = 25;
   let filteredItems = null; // if set, paginate this instead of allItems
+  let currentStatusFilter = 'active'; // New state variable: 'active' or 'inactive'
 
   // Initialize page size from UI if present
   if (pageSizeSelect && pageSizeSelect.value) {
@@ -255,9 +257,14 @@
     statusEl.style.color = isError ? "#ef4444" : "";
   }
 
-  async function apiGetList() {
+  async function apiGetList(statusFilter) {
     const url = buildUrl(cfg.endpoints.list);
-    const res = await fetch(url, { ...cfg.requestInit, method: "GET" });
+    const params = new URLSearchParams();
+    if (statusFilter) {
+      params.append('status', statusFilter);
+    }
+    const fullUrl = url + (params.toString() ? `?${params.toString()}` : '');
+    const res = await fetch(fullUrl, { ...cfg.requestInit, method: "GET" });
     if (!res.ok) throw new Error(`List failed: ${res.status}`);
     return res.json();
   }
@@ -465,7 +472,7 @@
   async function refresh() {
     setStatus("Loading...");
     try {
-      const data = await apiGetList();
+      const data = await apiGetList(currentStatusFilter);
       const items = Array.isArray(data)
         ? data
         : (data.items || data.Items || data.suppliers || data.Suppliers || []);
@@ -596,7 +603,11 @@
       setStatus("Downloading all records...");
       downloadAllBtn.disabled = true;
       try {
-        const url = buildUrl(cfg.endpoints.downloadAll);
+        const qp = new URLSearchParams();
+        if (currentStatusFilter) {
+          qp.append('status', currentStatusFilter);
+        }
+        const url = buildUrl(cfg.endpoints.downloadAll) + (qp.toString() ? `?${qp.toString()}` : '');
         console.log("Download All URL:", url);
         await downloadCsvFromApi(url, `suppliers_all_${Date.now()}.csv`);
         setStatus("Download started.");
@@ -632,6 +643,10 @@
           if (c.field && c.field !== "__ALL__" && c.text) {
             qp.append(c.field, c.text);
           }
+        }
+        // Add current status filter
+        if (currentStatusFilter) {
+          qp.append('status', currentStatusFilter);
         }
         const url = buildUrl(cfg.endpoints.downloadFiltered) + (qp.toString() ? "?" + qp.toString() : "");
         console.log("Download Filtered URL:", url);
@@ -725,6 +740,18 @@
 
   viewAllBtn.addEventListener("click", async () => {
     currentMode = "list";
+    currentStatusFilter = 'active'; // Set filter to active
+    viewAllBtn.className = "secondary"; // Highlight active button
+    viewDeletedBtn.className = "ghost"; // Dim inactive button
+    showSection("table");
+    await refresh();
+  });
+
+  viewDeletedBtn.addEventListener("click", async () => {
+    currentMode = "list";
+    currentStatusFilter = 'inactive'; // Set filter to inactive
+    viewDeletedBtn.className = "secondary"; // Highlight inactive button
+    viewAllBtn.className = "ghost"; // Dim active button
     showSection("table");
     await refresh();
   });

@@ -61,13 +61,16 @@ def lambda_handler(event, context):
         
     elif httpMethod == getMethod and path == suppliersPath:
         # LIST ALL: GET /suppliers (Returns JSON)
-        response = getSuppliers()
+        params = event.get('queryStringParameters', {})
+        status_filter = params.get('status')
+        response = getSuppliers(status_filter)
     
     # --- NEW DOWNLOAD API ROUTES ---
     elif httpMethod == getMethod and path == downloadAllPath:
         # DOWNLOAD ALL: GET /suppliers/download/all
         logger.info("Routing GET to download all records.")
-        response = downloadRecords(None)
+        params = event.get('queryStringParameters', {})
+        response = downloadRecords(params)
         
     elif httpMethod == getMethod and path == downloadFilteredPath:
         # DOWNLOAD FILTERED: GET /suppliers/download/filtered?Key=Value&Key2=Value2
@@ -284,6 +287,27 @@ def downloadRecords(filter_params):
             scan_kwargs['ExpressionAttributeValues'] = expression_attribute_values
             logger.info(f"Using filter: {filter_expression}")
 
+        # If a status filter is present in filter_params (from downloadAllBtn or downloadFilteredBtn)
+        # or if no filter_params, default to active status (for downloadAll if no UI filter is applied, though app.js now sends status)
+        status_from_params = filter_params.get('status') if filter_params else None
+        if status_from_params:
+            # If status filter is already in filter_params, ensure it's applied correctly.
+            # This case handles downloadFiltered where 'status' might already be in query params.
+            # For downloadAll, it will be added here if currentStatusFilter is set in app.js
+            if 'FilterExpression' in scan_kwargs:
+                scan_kwargs['FilterExpression'] += ' AND #st = :statusVal'
+            else:
+                scan_kwargs['FilterExpression'] = '#st = :statusVal'
+            
+            if 'ExpressionAttributeNames' not in scan_kwargs:
+                scan_kwargs['ExpressionAttributeNames'] = {}
+            scan_kwargs['ExpressionAttributeNames']['#st'] = 'status'
+            
+            if 'ExpressionAttributeValues' not in scan_kwargs:
+                scan_kwargs['ExpressionAttributeValues'] = {}
+            scan_kwargs['ExpressionAttributeValues'][':statusVal'] = status_from_params
+            logger.info(f"Applying status filter: {status_from_params}")
+
         # Fetch data with pagination (Scan is used for simplicity/non-key filtering)
         response = table.scan(**scan_kwargs)
         all_items.extend(response.get('Items', []))
@@ -376,13 +400,24 @@ def getSupplier(pk, sk):
         logger.error('Error getting supplier: %s', e)
         return buildResponse(500,{'error': f'Error getting supplier: {str(e)}'})
 
-def getSuppliers():
-    # ... (Your original getSuppliers logic)
+def getSuppliers(statusFilter=None):
     try:
-        response = table.scan()
+        scan_kwargs = {}
+        if statusFilter:
+            scan_kwargs['FilterExpression'] = '#st = :statusVal'
+            scan_kwargs['ExpressionAttributeNames'] = {'#st': 'status'}
+            scan_kwargs['ExpressionAttributeValues'] = {':statusVal': statusFilter}
+        else:
+            # Default to active if no filter is provided
+            scan_kwargs['FilterExpression'] = '#st = :activeStatus'
+            scan_kwargs['ExpressionAttributeNames'] = {'#st': 'status'}
+            scan_kwargs['ExpressionAttributeValues'] = {':activeStatus': 'active'}
+            
+        response = table.scan(**scan_kwargs)
         result = response['Items']
         while 'LastEvaluatedKey' in response:
-            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+            response = table.scan(**scan_kwargs)
             result.extend(response['Items'])
         
         body = {'suppliers': result}
