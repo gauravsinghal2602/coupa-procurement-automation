@@ -326,7 +326,23 @@
     const url = buildUrl(cfg.endpoints.update);
     const body = buildPatchBody(pk, sk, attributes);
     const res = await fetch(url, { ...cfg.requestInit, method: "PATCH", body });
-    if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+    if (!res.ok) {
+      let errorMessage = `Update failed: ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.message) {
+          errorMessage = errJson.message;
+        } else if (errJson && errJson.error) {
+          errorMessage = errJson.error;
+        }
+      } catch {
+        try {
+          const errText = await res.text();
+          if (errText) errorMessage = errText;
+        } catch {}
+      }
+      throw new Error(errorMessage);
+    }
     return res.json().catch(() => ({}));
   }
 

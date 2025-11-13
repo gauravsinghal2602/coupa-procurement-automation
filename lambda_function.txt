@@ -6,6 +6,7 @@ import csv
 import io
 from datetime import datetime # Import datetime
 from decimal import Decimal
+from botocore.exceptions import ClientError
 
 # --- Configuration & Initialization ---
 logger = logging.getLogger()
@@ -492,12 +493,24 @@ def modifySupplier(pk, sk, updates):
 
         update_expression = "SET " + ", ".join(set_clauses)
 
-        response = table.update_item(
-            Key={'SAP vendor code': pk, 'Plant Code': sk},
-            UpdateExpression=update_expression,
-            ExpressionAttributeNames=expression_attribute_names,
-            ExpressionAttributeValues=expression_attribute_values,
-            ReturnValues='UPDATED_NEW')
+        # Add key aliases for condition expression
+        expression_attribute_names.update({
+            '#pk': 'SAP vendor code',
+            '#sk': 'Plant Code'
+        })
+
+        try:
+            response = table.update_item(
+                Key={'SAP vendor code': pk, 'Plant Code': sk},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values,
+                ConditionExpression='attribute_exists(#pk) AND attribute_exists(#sk)',
+                ReturnValues='UPDATED_NEW')
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                return buildResponse(404, {'message': 'This record does not exist'})
+            raise
             
         body = {
             'Operation': 'UPDATE',
@@ -506,6 +519,11 @@ def modifySupplier(pk, sk, updates):
         }
         return buildResponse(200,body)
             
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return buildResponse(404, {'message': 'This record does not exist'})
+        logger.error('ClientError modifying supplier: %s', e)
+        return buildResponse(500, {'error': f'Error modifying supplier: {str(e)}'})
     except Exception as e:
         logger.error('Error modifying supplier: %s', e)
         return buildResponse(500,{'error': f'Error modifying supplier: {str(e)}'})
