@@ -53,6 +53,7 @@
   const addConditionBtn = el("addConditionBtn");
   const applyFilterBtn = el("applyFilterBtn");
   const clearFilterBtn = el("clearFilterBtn");
+  const deleteSelectedBtn = el("deleteSelectedBtn");
   const downloadAllBtn = el("downloadAllBtn");
   const downloadFilteredBtn = el("downloadFilteredBtn");
   const pageSizeSelect = el("pageSizeSelect");
@@ -377,6 +378,7 @@
       }
     }
     renderPage(); // Re-render to update checkbox states
+    updateDeleteButtonState();
   }
 
   // Helper function to get all selected items from the full dataset
@@ -398,6 +400,20 @@
   function clearSelection() {
     selectedItems.clear();
     renderPage(); // Re-render to update checkbox states
+    updateDeleteButtonState();
+  }
+
+  // Update delete button state based on selection
+  function updateDeleteButtonState() {
+    if (deleteSelectedBtn) {
+      const count = getSelectedCount();
+      deleteSelectedBtn.disabled = count === 0;
+      if (count > 0) {
+        deleteSelectedBtn.textContent = `Delete Selected (${count})`;
+      } else {
+        deleteSelectedBtn.textContent = "Delete Selected";
+      }
+    }
   }
 
   // Helper function to update select all checkbox state
@@ -501,6 +517,8 @@
         toggleItemSelection(pk, sk);
         // Update select all checkbox state
         updateSelectAllCheckbox(selectAllCheckbox, items, pkName, skName);
+        // Update delete button state
+        updateDeleteButtonState();
       });
       tdCheckbox.appendChild(checkbox);
       tr.appendChild(tdCheckbox);
@@ -525,16 +543,8 @@
       // Pass a minimal attributes object for convenience when opening edit from a row
       const attrsForEdit = Object.fromEntries(Object.entries(item).filter(([k]) => k !== pkName && k !== skName));
       editBtn.addEventListener("click", () => startEdit(pk, sk, attrsForEdit));
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "danger";
-      delBtn.textContent = "Delete";
-      delBtn.addEventListener("click", () => onDelete(pk, sk));
+      // Remove individual delete button - use global delete instead
       tdActions.appendChild(editBtn);
-      // Only append delete button if status is active
-      if (item.status === 'active') {
-        tdActions.appendChild(delBtn);
-      }
       tr.appendChild(tdActions);
 
       itemsTbody.appendChild(tr);
@@ -579,6 +589,7 @@
     const pageItems = getPagedItems(src);
     renderItems(pageItems);
     updatePaginationControls(src);
+    updateDeleteButtonState();
   }
 
   async function refresh() {
@@ -826,7 +837,10 @@
     
     setStatus("Deleting...");
     try {
-      const deleteBody = { 'SAP vendor code': pk, 'Plant Code': sk };
+      const deleteBody = { [cfg.partitionKeyName]: pk };
+      if (cfg.sortKeyName && sk != null) {
+        deleteBody[cfg.sortKeyName] = sk;
+      }
       deleteBody.reason_delete = reason || 'UI Delete (no reason provided)'; // Use provided reason or a default
       await apiDelete(deleteBody);
       setStatus("Deleted.");
@@ -834,6 +848,80 @@
     } catch (e) {
       console.error(e);
       setStatus(e.message || "Delete failed", true);
+    }
+  }
+
+  // Bulk delete function for selected items
+  async function onBulkDelete() {
+    const selected = getSelectedItems();
+    if (selected.length === 0) {
+      setStatus("Please select at least one item to delete.", true);
+      return;
+    }
+
+    const count = selected.length;
+    const confirmMessage = `Are you sure you want to delete ${count} selected item(s)?`;
+    if (!confirm(confirmMessage)) {
+      return; // User cancelled
+    }
+
+    const reason = prompt(`Reason for deleting ${count} item(s):`);
+    if (reason === null) return; // User cancelled the prompt
+    if (!reason || reason.trim() === "") {
+      setStatus("Deletion reason is required.", true);
+      return;
+    }
+
+    setStatus(`Deleting ${count} item(s)...`);
+    deleteSelectedBtn.disabled = true;
+    
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+
+    try {
+      // Delete items sequentially to avoid overwhelming the API
+      for (const item of selected) {
+        try {
+          const pk = item[cfg.partitionKeyName];
+          const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+          const deleteBody = { [cfg.partitionKeyName]: pk };
+          if (cfg.sortKeyName && sk != null) {
+            deleteBody[cfg.sortKeyName] = sk;
+          }
+          deleteBody.reason_delete = reason;
+          await apiDelete(deleteBody);
+          successCount++;
+          // Remove from selected items
+          const key = getItemKey(pk, sk);
+          selectedItems.delete(key);
+        } catch (e) {
+          failCount++;
+          const pk = item[cfg.partitionKeyName];
+          const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+          const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${pk}, ${cfg.sortKeyName}=${sk}` : `${cfg.partitionKeyName}=${pk}`;
+          errors.push(`${keyDesc}: ${e.message || "Delete failed"}`);
+          console.error(`Failed to delete ${keyDesc}:`, e);
+        }
+      }
+
+      // Show summary
+      if (failCount === 0) {
+        setStatus(`Successfully deleted ${successCount} item(s).`);
+      } else {
+        const errorMsg = `Deleted ${successCount} item(s), failed ${failCount} item(s).\nErrors:\n${errors.join('\n')}`;
+        setStatus(errorMsg, true);
+      }
+
+      // Refresh the list and clear selection
+      await refresh();
+      selectedItems.clear();
+      updateDeleteButtonState();
+    } catch (e) {
+      console.error(e);
+      setStatus(e.message || "Bulk delete failed", true);
+    } finally {
+      deleteSelectedBtn.disabled = false;
     }
   }
 
@@ -930,6 +1018,13 @@
   clearFilterBtn.addEventListener("click", () => { conditionsEl.innerHTML = ""; addConditionRow(); filteredItems = null; currentPage = 1; renderPage(); });
   addConditionBtn.addEventListener("click", addConditionRow);
 
+  // Bulk delete handler
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener("click", onBulkDelete);
+    // Initialize button state
+    updateDeleteButtonState();
+  }
+
   // Start with one empty condition row
   addConditionRow();
 
@@ -953,7 +1048,10 @@
         const reason = prompt(`Reason for deleting item ${keyDesc}:`);
         if (reason === null) return; // User cancelled the prompt
 
-        const deleteBody = { 'SAP vendor code': pk, 'Plant Code': sk };
+        const deleteBody = { [cfg.partitionKeyName]: pk };
+        if (cfg.sortKeyName && sk != null) {
+          deleteBody[cfg.sortKeyName] = sk;
+        }
         deleteBody.reason_delete = reason || 'UI Delete (no reason provided from form)'; // Use provided reason or a default
         await apiDelete(deleteBody);
         setStatus("Deleted.");
