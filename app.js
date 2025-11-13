@@ -422,7 +422,10 @@
       delBtn.textContent = "Delete";
       delBtn.addEventListener("click", () => onDelete(pk, sk));
       tdActions.appendChild(editBtn);
-      tdActions.appendChild(delBtn);
+      // Only append delete button if status is active
+      if (item.status === 'active') {
+        tdActions.appendChild(delBtn);
+      }
       tr.appendChild(tdActions);
 
       itemsTbody.appendChild(tr);
