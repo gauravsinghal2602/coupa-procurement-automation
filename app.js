@@ -478,6 +478,7 @@
     const schemaFields = cfg.schema.map(field => field.name);
     const excludedFields = ['created_by', 'updated_by', 'created_at', 'updated_at', 'status', 'reason_update', 'reason_delete'];
     const displayFields = schemaFields.filter(field => !excludedFields.includes(field));
+    columnOrder = displayFields.slice();
     
     // Render header
     const headerRow = document.createElement("tr");
@@ -519,7 +520,7 @@
 
     // Populate filter field options for each condition row - needs to use all possible fields
     const selects = conditionsEl.querySelectorAll('select.condition-field');
-    selects.forEach((sel) => populateFieldOptions(sel, pkName, skName, schemaFields));
+    selects.forEach((sel) => populateFieldOptions(sel, pkName, skName, displayFields));
 
     // Render body
     if (!Array.isArray(items) || items.length === 0) {
