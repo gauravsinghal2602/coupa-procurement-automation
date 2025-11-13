@@ -164,13 +164,43 @@
         const defaultPlaceholder = field.label || field.name;
         if (defaultPlaceholder) input.placeholder = defaultPlaceholder;
       }
-      if (field.required) input.required = true;
+      if (field.required) {
+        input.required = true;
+        input.dataset.originalRequired = "true";
+      } else {
+        input.dataset.originalRequired = "false";
+      }
       wrap.appendChild(label);
       wrap.appendChild(input);
       attributesFields.appendChild(wrap);
     }
     attributesFields.classList.remove("hidden");
     attributesInput.classList.add("hidden");
+  }
+
+  function setAttributeInputsEnabled(enabled) {
+    if (hasSchema()) {
+      if (!attributesFields) return;
+      const controls = attributesFields.querySelectorAll("input, select, textarea");
+      controls.forEach((control) => {
+        if (!control.dataset.originalRequired) {
+          control.dataset.originalRequired = control.required ? "true" : "false";
+        }
+        control.disabled = !enabled;
+        if (enabled && control.dataset.originalRequired === "true") {
+          control.required = true;
+          control.setAttribute("required", "");
+        } else {
+          control.required = false;
+          control.removeAttribute("required");
+        }
+      });
+    } else if (attributesInput) {
+      attributesInput.disabled = !enabled;
+      if (!enabled) {
+        attributesInput.removeAttribute("required");
+      }
+    }
   }
 
   function renderUpdateSingleFieldUI(prefill) { /* deprecated: keep for fallback; multi-field update is default now */
@@ -892,6 +922,7 @@
     } else {
       if (hasSchema()) renderUpdateMultiFieldUI(); else attributesInput.value = "{}";
     }
+    setAttributeInputsEnabled(true);
     showSection("form");
   }
 
@@ -903,6 +934,7 @@
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     itemForm.reset();
+    setAttributeInputsEnabled(true);
   }
 
   async function onDelete(pk, sk) {
@@ -1040,6 +1072,7 @@
     attributesRow.classList.remove("hidden");
     csvRow.classList.remove("hidden");
     if (hasSchema()) { renderAttributeFields(); }
+    setAttributeInputsEnabled(true);
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -1053,6 +1086,7 @@
     attributesRow.classList.remove("hidden");
     csvRow.classList.add("hidden");
     if (hasSchema()) { renderUpdateMultiFieldUI(); }
+    setAttributeInputsEnabled(true);
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
@@ -1065,6 +1099,7 @@
     saveBtn.textContent = "Delete";
     attributesRow.classList.add("hidden");
     csvRow.classList.add("hidden");
+    setAttributeInputsEnabled(false);
     pkInput.disabled = false;
     if (cfg.sortKeyName && skInput) skInput.disabled = false;
     showSection("form");
