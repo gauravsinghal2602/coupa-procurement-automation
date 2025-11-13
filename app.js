@@ -108,6 +108,7 @@
   let pageSize = 25;
   let filteredItems = null; // if set, paginate this instead of allItems
   let currentStatusFilter = 'active'; // New state variable: 'active' or 'inactive'
+  let selectedItems = new Set(); // Track selected items by unique key (pk or pk+sk)
 
   // Initialize page size from UI if present
   if (pageSizeSelect && pageSizeSelect.value) {
@@ -342,6 +343,83 @@
     try { return JSON.parse(str); } catch (e) { throw new Error("Attributes must be valid JSON"); }
   }
 
+  // Helper function to get unique key for an item
+  function getItemKey(pk, sk) {
+    return sk != null ? `${pk}::${sk}` : String(pk);
+  }
+
+  // Helper function to check if item is selected
+  function isItemSelected(pk, sk) {
+    return selectedItems.has(getItemKey(pk, sk));
+  }
+
+  // Helper function to toggle item selection
+  function toggleItemSelection(pk, sk) {
+    const key = getItemKey(pk, sk);
+    if (selectedItems.has(key)) {
+      selectedItems.delete(key);
+    } else {
+      selectedItems.add(key);
+    }
+  }
+
+  // Helper function to select/deselect all items on current page
+  function toggleSelectAll(checked) {
+    const pageItems = getPagedItems(getSourceItems());
+    for (const item of pageItems) {
+      const pk = item[cfg.partitionKeyName];
+      const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+      const key = getItemKey(pk, sk);
+      if (checked) {
+        selectedItems.add(key);
+      } else {
+        selectedItems.delete(key);
+      }
+    }
+    renderPage(); // Re-render to update checkbox states
+  }
+
+  // Helper function to get all selected items from the full dataset
+  function getSelectedItems() {
+    const sourceItems = getSourceItems();
+    return sourceItems.filter(item => {
+      const pk = item[cfg.partitionKeyName];
+      const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+      return isItemSelected(pk, sk);
+    });
+  }
+
+  // Helper function to get count of selected items
+  function getSelectedCount() {
+    return selectedItems.size;
+  }
+
+  // Helper function to clear all selections
+  function clearSelection() {
+    selectedItems.clear();
+    renderPage(); // Re-render to update checkbox states
+  }
+
+  // Helper function to update select all checkbox state
+  function updateSelectAllCheckbox(selectAllCheckbox, items, pkName, skName) {
+    if (Array.isArray(items) && items.length > 0) {
+      const allSelected = items.every(item => {
+        const pk = item[pkName];
+        const sk = skName ? item[skName] : null;
+        return isItemSelected(pk, sk);
+      });
+      selectAllCheckbox.checked = allSelected && items.length > 0;
+      selectAllCheckbox.indeterminate = !allSelected && items.some(item => {
+        const pk = item[pkName];
+        const sk = skName ? item[skName] : null;
+        return isItemSelected(pk, sk);
+      });
+    } else {
+      selectAllCheckbox.checked = false;
+      selectAllCheckbox.indeterminate = false;
+    }
+  }
+
   function renderItems(items) {
     itemsTbody.innerHTML = "";
     // Build dynamic columns: pk, sk (if any), plus union of other keys
@@ -355,6 +433,20 @@
     
     // Render header
     const headerRow = document.createElement("tr");
+    
+    // Add checkbox header with "select all" functionality
+    const thCheckbox = document.createElement("th");
+    thCheckbox.style.width = "40px";
+    thCheckbox.style.textAlign = "center";
+    const selectAllCheckbox = document.createElement("input");
+    selectAllCheckbox.type = "checkbox";
+    selectAllCheckbox.title = "Select all";
+    selectAllCheckbox.addEventListener("change", (e) => {
+      toggleSelectAll(e.target.checked);
+    });
+    thCheckbox.appendChild(selectAllCheckbox);
+    headerRow.appendChild(thCheckbox);
+    
     // Render PK and SK first
     const thPk = document.createElement("th"); thPk.textContent = pkName; headerRow.appendChild(thPk);
     if (skName) { const thSk = document.createElement("th"); thSk.textContent = skName; headerRow.appendChild(thSk); }
@@ -373,6 +465,9 @@
     const thActions = document.createElement("th"); thActions.textContent = "Actions"; headerRow.appendChild(thActions);
     itemsThead.innerHTML = "";
     itemsThead.appendChild(headerRow);
+    
+    // Update select all checkbox state
+    updateSelectAllCheckbox(selectAllCheckbox, items, pkName, skName);
 
     // Populate filter field options for each condition row - needs to use all possible fields
     const selects = conditionsEl.querySelectorAll('select.condition-field');
@@ -382,7 +477,7 @@
     if (!Array.isArray(items) || items.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      const colCount = 1 + (skName ? 1 : 0) + displayFields.length + 1; // pk + sk? + all *displayed* schema fields + actions
+      const colCount = 1 + 1 + (skName ? 1 : 0) + displayFields.length + 1; // checkbox + pk + sk? + all *displayed* schema fields + actions
       td.colSpan = colCount;
       td.className = "muted";
       td.textContent = "No items found.";
@@ -395,6 +490,20 @@
       const pk = item[pkName];
       const sk = skName ? item[skName] : null;
       const tr = document.createElement("tr");
+
+      // Add checkbox cell
+      const tdCheckbox = document.createElement("td");
+      tdCheckbox.style.textAlign = "center";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = isItemSelected(pk, sk);
+      checkbox.addEventListener("change", () => {
+        toggleItemSelection(pk, sk);
+        // Update select all checkbox state
+        updateSelectAllCheckbox(selectAllCheckbox, items, pkName, skName);
+      });
+      tdCheckbox.appendChild(checkbox);
+      tr.appendChild(tdCheckbox);
 
       const tdPk = document.createElement("td"); tdPk.textContent = valueToString(pk); tr.appendChild(tdPk);
       if (skName) { const tdSk = document.createElement("td"); tdSk.textContent = valueToString(sk); tr.appendChild(tdSk); }
