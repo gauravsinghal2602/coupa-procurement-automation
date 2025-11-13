@@ -54,6 +54,7 @@
   const applyFilterBtn = el("applyFilterBtn");
   const clearFilterBtn = el("clearFilterBtn");
   const deleteSelectedBtn = el("deleteSelectedBtn");
+  const restoreSelectedBtn = el("restoreSelectedBtn");
   const downloadAllBtn = el("downloadAllBtn");
   const downloadFilteredBtn = el("downloadFilteredBtn");
   const pageSizeSelect = el("pageSizeSelect");
@@ -379,6 +380,7 @@
     }
     renderPage(); // Re-render to update checkbox states
     updateDeleteButtonState();
+    updateRestoreButtonState();
   }
 
   // Helper function to get all selected items from the full dataset
@@ -401,17 +403,47 @@
     selectedItems.clear();
     renderPage(); // Re-render to update checkbox states
     updateDeleteButtonState();
+    updateRestoreButtonState();
   }
 
-  // Update delete button state based on selection
+  // Update delete button state based on selection and current view
   function updateDeleteButtonState() {
     if (deleteSelectedBtn) {
+      // Hide delete button when viewing inactive records
+      if (currentStatusFilter === 'inactive') {
+        deleteSelectedBtn.style.display = 'none';
+        return;
+      }
+      
+      // Show delete button for active records
+      deleteSelectedBtn.style.display = '';
       const count = getSelectedCount();
       deleteSelectedBtn.disabled = count === 0;
       if (count > 0) {
         deleteSelectedBtn.textContent = `Delete Selected (${count})`;
       } else {
         deleteSelectedBtn.textContent = "Delete Selected";
+      }
+    }
+  }
+
+  // Update restore button state based on selection and current view
+  function updateRestoreButtonState() {
+    if (restoreSelectedBtn) {
+      // Hide restore button when viewing active records
+      if (currentStatusFilter === 'active') {
+        restoreSelectedBtn.style.display = 'none';
+        return;
+      }
+      
+      // Show restore button for inactive records
+      restoreSelectedBtn.style.display = '';
+      const count = getSelectedCount();
+      restoreSelectedBtn.disabled = count === 0;
+      if (count > 0) {
+        restoreSelectedBtn.textContent = `Restore Selected (${count})`;
+      } else {
+        restoreSelectedBtn.textContent = "Restore Selected";
       }
     }
   }
@@ -517,8 +549,9 @@
         toggleItemSelection(pk, sk);
         // Update select all checkbox state
         updateSelectAllCheckbox(selectAllCheckbox, items, pkName, skName);
-        // Update delete button state
+        // Update delete and restore button states
         updateDeleteButtonState();
+        updateRestoreButtonState();
       });
       tdCheckbox.appendChild(checkbox);
       tr.appendChild(tdCheckbox);
@@ -590,6 +623,7 @@
     renderItems(pageItems);
     updatePaginationControls(src);
     updateDeleteButtonState();
+    updateRestoreButtonState();
   }
 
   async function refresh() {
@@ -917,6 +951,7 @@
       await refresh();
       selectedItems.clear();
       updateDeleteButtonState();
+      updateRestoreButtonState();
     } catch (e) {
       console.error(e);
       setStatus(e.message || "Bulk delete failed", true);
@@ -1023,6 +1058,90 @@
     deleteSelectedBtn.addEventListener("click", onBulkDelete);
     // Initialize button state
     updateDeleteButtonState();
+  }
+
+  // Bulk restore function for selected inactive items
+  async function onBulkRestore() {
+    const selected = getSelectedItems();
+    if (selected.length === 0) {
+      setStatus("Please select at least one item to restore.", true);
+      return;
+    }
+
+    const count = selected.length;
+    const confirmMessage = `Are you sure you want to restore ${count} selected item(s) to active status?`;
+    if (!confirm(confirmMessage)) {
+      return; // User cancelled
+    }
+
+    const reason = prompt(`Reason for restoring ${count} item(s) to active:`);
+    if (reason === null) return; // User cancelled the prompt
+    if (!reason || reason.trim() === "") {
+      setStatus("Restore reason is required.", true);
+      return;
+    }
+
+    setStatus(`Restoring ${count} item(s)...`);
+    restoreSelectedBtn.disabled = true;
+    
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+
+    try {
+      // Restore items sequentially to avoid overwhelming the API
+      for (const item of selected) {
+        try {
+          const pk = item[cfg.partitionKeyName];
+          const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+          
+          // Update status to 'active' and add reason
+          const updateAttrs = {
+            status: 'active',
+            reason_update: reason
+          };
+          
+          await apiUpdate(pk, sk, updateAttrs);
+          successCount++;
+          // Remove from selected items
+          const key = getItemKey(pk, sk);
+          selectedItems.delete(key);
+        } catch (e) {
+          failCount++;
+          const pk = item[cfg.partitionKeyName];
+          const sk = cfg.sortKeyName ? item[cfg.sortKeyName] : null;
+          const keyDesc = cfg.sortKeyName ? `${cfg.partitionKeyName}=${pk}, ${cfg.sortKeyName}=${sk}` : `${cfg.partitionKeyName}=${pk}`;
+          errors.push(`${keyDesc}: ${e.message || "Restore failed"}`);
+          console.error(`Failed to restore ${keyDesc}:`, e);
+        }
+      }
+
+      // Show summary
+      if (failCount === 0) {
+        setStatus(`Successfully restored ${successCount} item(s) to active.`);
+      } else {
+        const errorMsg = `Restored ${successCount} item(s), failed ${failCount} item(s).\nErrors:\n${errors.join('\n')}`;
+        setStatus(errorMsg, true);
+      }
+
+      // Refresh the list and clear selection
+      await refresh();
+      selectedItems.clear();
+      updateDeleteButtonState();
+      updateRestoreButtonState();
+    } catch (e) {
+      console.error(e);
+      setStatus(e.message || "Bulk restore failed", true);
+    } finally {
+      restoreSelectedBtn.disabled = false;
+    }
+  }
+
+  // Bulk restore handler
+  if (restoreSelectedBtn) {
+    restoreSelectedBtn.addEventListener("click", onBulkRestore);
+    // Initialize button state
+    updateRestoreButtonState();
   }
 
   // Start with one empty condition row
