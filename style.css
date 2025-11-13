@@ -188,6 +188,11 @@ input[type="checkbox"] {
   accent-color: var(--accent-2);
 }
 
+.required-indicator {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 /* Footer */
 footer.page-footer {
   margin-top: 24px;

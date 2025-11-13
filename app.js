@@ -83,16 +83,21 @@
   const skRow = document.getElementById("skRow");
 
   // Configure labels/visibility based on keys
-  pkHeader.textContent = cfg.partitionKeyName || "Partition Key";
-  pkLabel.textContent = cfg.partitionKeyName || "Partition Key";
+  const pkLabelText = cfg.partitionKeyName || "Partition Key";
+  pkHeader.textContent = pkLabelText;
+  pkLabel.textContent = pkLabelText;
+  appendRequiredIndicator(pkLabel, true);
   if (cfg.sortKeyName) {
-    skHeader.textContent = cfg.sortKeyName;
-    skLabel.textContent = cfg.sortKeyName;
+    const skLabelText = cfg.sortKeyName;
+    skHeader.textContent = skLabelText;
+    skLabel.textContent = skLabelText;
     skRow.classList.remove("hidden");
     skInput.required = true;
+    appendRequiredIndicator(skLabel, true);
   } else {
     skRow.classList.add("hidden");
     if (skInput) skInput.required = false;
+    appendRequiredIndicator(skLabel, false);
   }
   // Initial state: hide sections until an action is chosen
   formSection.classList.add("hidden");
@@ -121,6 +126,20 @@
   function hasSchema() { return Array.isArray(cfg.schema) && cfg.schema.length > 0; }
   function fieldId(name) { return `attr_${String(name).replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
 
+  function appendRequiredIndicator(labelEl, isRequired) {
+    if (!labelEl) return;
+    const existing = labelEl.querySelector('.required-indicator');
+    if (existing) {
+      existing.remove();
+    }
+    if (isRequired) {
+      const indicator = document.createElement('span');
+      indicator.className = 'required-indicator';
+      indicator.textContent = ' *';
+      labelEl.appendChild(indicator);
+    }
+  }
+
   function getFilteredSchema() {
     const internalFields = ['created_by', 'updated_by', 'created_at', 'updated_at', 'status', 'reason_update', 'reason_delete'];
     return Array.isArray(cfg.schema) ? cfg.schema.filter(field => !internalFields.includes(field.name)) : [];
@@ -139,7 +158,12 @@
       input.id = fieldId(field.name);
       input.name = field.name;
       input.type = field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "email" ? "email" : "text";
-      if (field.placeholder) input.placeholder = field.placeholder;
+      if (field.placeholder) {
+        input.placeholder = field.placeholder;
+      } else {
+        const defaultPlaceholder = field.label || field.name;
+        if (defaultPlaceholder) input.placeholder = defaultPlaceholder;
+      }
       if (field.required) input.required = true;
       wrap.appendChild(label);
       wrap.appendChild(input);
