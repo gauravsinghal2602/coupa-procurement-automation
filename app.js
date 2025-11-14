@@ -1,4 +1,5 @@
 (function () {
+  console.log('=== APP.JS LOADED ===');
   const defaultConfig = {
     baseUrl: "",
     // For composite keys, set both. If only partitionKeyName is set, app will treat as single key.
@@ -546,9 +547,30 @@
     
     // Use schema to define column order and display
     const schemaFields = cfg.schema.map(field => field.name);
-    const excludedFields = ['created_by', 'updated_by', 'created_at', 'updated_at', 'status', 'reason_update', 'reason_delete'];
+    
+    // Conditionally include/exclude fields based on status filter
+    // For active records: show created_at, created_by, updated_at, updated_by, reason_update
+    // For inactive records: show created_at, created_by, reason_delete
+    let excludedFields;
+    
+    if (currentStatusFilter === 'active') {
+      // For active: exclude only status and reason_delete
+      excludedFields = ['status', 'reason_delete'];
+    } else {
+      // For inactive: exclude status, updated_at, updated_by, reason_update
+      excludedFields = ['status', 'updated_at', 'updated_by', 'reason_update'];
+    }
+    
+    // Filter out excluded fields - this will include all schema fields except excluded ones
+    // This means for active: created_at, created_by, updated_at, updated_by, reason_update will be included
+    // For inactive: created_at, created_by, reason_delete will be included
     const displayFields = schemaFields.filter(field => !excludedFields.includes(field));
     columnOrder = displayFields.slice();
+    
+    // Debug: log what fields will be displayed
+    console.log('Status filter:', currentStatusFilter);
+    console.log('Excluded fields:', excludedFields);
+    console.log('Display fields:', displayFields);
     
     // Render header
     const headerRow = document.createElement("tr");
@@ -574,10 +596,14 @@
     for (const fieldName of displayFields) {
       if (fieldName === pkName || (skName && fieldName === skName)) continue; // Skip PK/SK as they are already added
       const schemaField = cfg.schema.find(f => f.name === fieldName);
+      console.log('Processing field:', fieldName, 'Found in schema:', !!schemaField);
       if (schemaField) {
         const th = document.createElement("th");
         th.textContent = schemaField.label || schemaField.name; // Use label if available, otherwise name
         headerRow.appendChild(th);
+        console.log('Added header for:', fieldName, 'Label:', th.textContent);
+      } else {
+        console.warn('Field not found in schema:', fieldName);
       }
     }
 
@@ -699,6 +725,8 @@
 
   async function refresh() {
     setStatus("Loading...");
+    console.log('=== REFRESH CALLED ===');
+    console.log('Current status filter:', currentStatusFilter);
     try {
       const data = await apiGetList(currentStatusFilter);
       const items = Array.isArray(data)
@@ -707,6 +735,7 @@
       allItems = items;
       filteredItems = null;
       currentPage = 1;
+      console.log('About to render page with', items.length, 'items');
       renderPage();
       setStatus("Loaded.");
     } catch (e) {
