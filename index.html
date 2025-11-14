@@ -11,7 +11,8 @@
         <header class="topbar">
             <h1>Supplier Database</h1>
             <div class="actions">
-                <button id="viewAllBtn" class="secondary" title="View all suppliers">View All</button>
+                <button id="viewAllBtn" class="secondary" title="View all suppliers">View All Active</button>
+                <button id="viewDeletedBtn" class="ghost" title="View deleted suppliers">View Inactive</button>
                 <button id="createBtn" title="Create item">Create</button>
                 <button id="updateBtn" class="secondary" title="Update item">Update</button>
                 <button id="deleteBtn" class="danger" title="Delete item">Delete</button>
@@ -66,6 +67,8 @@
                 <button id="applyFilterBtn" class="secondary">Filter</button>
                 <button id="clearFilterBtn" class="ghost">Clear</button>
                 <span class="spacer"></span>
+                <button type="button" id="deleteSelectedBtn" class="danger">Delete Selected</button>
+                <button type="button" id="restoreSelectedBtn" class="secondary">Restore Selected</button>
                 <button type="button" id="downloadAllBtn">Download All (CSV)</button>
                 <button type="button" id="downloadFilteredBtn" class="secondary">Download Filtered (CSV)</button>
             </div>
@@ -85,6 +88,18 @@
                     </tbody>
                 </table>
             </div>
+            <div class="pagination-controls">
+                <label for="pageSizeSelect">Rows/page</label>
+                <select id="pageSizeSelect" class="secondary">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+                <button type="button" id="prevPageBtn" class="secondary">Prev</button>
+                <span id="pageInfo" class="muted">Page 1 / 1</span>
+                <button type="button" id="nextPageBtn" class="secondary">Next</button>
+            </div>
         </section>
     </div>
 
@@ -93,7 +108,7 @@
     </footer>
 
     <script src="./config.js"></script>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=2025-01-15-1"></script>
 </body>
 </html>
 
