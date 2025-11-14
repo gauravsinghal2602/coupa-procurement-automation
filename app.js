@@ -797,7 +797,7 @@
     row.className = 'condition-row';
     const sel = document.createElement('select'); sel.className = 'condition-field';
     const inp = document.createElement('input'); inp.className = 'condition-text'; inp.placeholder = 'Search here...';
-    const del = document.createElement('button'); del.type = 'button'; del.textContent = 'Remove';
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'ghost small-btn'; del.textContent = '-';
     del.addEventListener('click', () => { row.remove(); });
     row.appendChild(sel); row.appendChild(inp); row.appendChild(del);
     conditionsEl.appendChild(row);
@@ -1373,7 +1373,7 @@
     const sel = document.createElement("select"); sel.className = "update-field";
     for (const f of schema) { const opt = document.createElement("option"); opt.value = f.name; opt.textContent = f.label || f.name; sel.appendChild(opt); }
     const input = document.createElement("input"); input.className = "update-value"; input.type = "text";
-    const btn = document.createElement("button"); btn.type = "button"; btn.className = "ghost"; btn.textContent = "Remove";
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "ghost small-btn"; btn.textContent = "-";
     btn.addEventListener("click", () => { row.remove(); });
 
     function syncType() {
